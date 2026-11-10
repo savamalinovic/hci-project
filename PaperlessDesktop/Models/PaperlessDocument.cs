@@ -56,9 +56,11 @@ public sealed class PaperlessDocument
 
 public sealed class PaperlessDocumentPage
 {
-    [JsonPropertyName("count")]
     public required int Count { get; init; }
 
-    [JsonPropertyName("results")]
     public required IReadOnlyList<PaperlessDocument> Results { get; init; }
+
+    public bool HasNextPage { get; init; }
+
+    public bool HasPreviousPage { get; init; }
 }
