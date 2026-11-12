@@ -26,6 +26,9 @@ public sealed class PaperlessDocument
     [JsonPropertyName("document_type")]
     public int? DocumentTypeId { get; init; }
 
+    [JsonPropertyName("content")]
+    public string? Content { get; init; }
+
     private sealed class DocumentDateConverter : JsonConverter<DateOnly?>
     {
         public override DateOnly? Read(
