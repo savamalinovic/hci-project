@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Windows;
+using System.Windows.Data;
 using PaperlessDesktop.Services;
 using PaperlessDesktop.ViewModels;
 
@@ -31,6 +32,14 @@ public partial class MainWindow : Window
                 break;
         }
     }
+
+    private void ClosePreview_Click(object sender, RoutedEventArgs e)
+    {
+        viewModel.SelectedDocument = null;
+        DocumentViews.Focus();
+    }
+
+    private void PreviewImage_TargetUpdated(object sender, DataTransferEventArgs e) => PreviewScroll.ScrollToTop();
 
     protected override void OnClosed(EventArgs e)
     {

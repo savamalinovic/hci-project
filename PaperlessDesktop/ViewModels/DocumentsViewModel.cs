@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Net;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
@@ -9,34 +8,49 @@ using PaperlessDesktop.Services;
 
 namespace PaperlessDesktop.ViewModels;
 
-internal sealed class DocumentsViewModel : INotifyPropertyChanged, IDisposable
+internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
 {
+    private static readonly FilterOption AllTags = new(null, "Svi tagovi");
+    private static readonly FilterOption AllCorrespondents = new(null, "Svi korespondenti");
+    private static readonly FilterOption AllTypes = new(null, "Svi tipovi");
+    private static readonly DocumentSearchCriteria EmptyCriteria = new();
+
     private readonly PaperlessClient client;
     private readonly CancellationTokenSource lifetime = new();
-    private readonly PageCommand previousPageCommand;
-    private readonly PageCommand nextPageCommand;
+    private readonly AsyncCommand previousPageCommand;
+    private readonly AsyncCommand nextPageCommand;
+    private readonly AsyncCommand applyFiltersCommand;
+    private readonly AsyncCommand clearFiltersCommand;
     private Uri? server;
     private string token = string.Empty;
     private PaperlessDocumentMetadata? metadata;
+    private DocumentSearchCriteria activeCriteria = EmptyCriteria;
     private PaperlessDocumentPage? currentPage;
     private int pageNumber;
     private IReadOnlyList<DocumentListItem> documents = [];
     private DocumentListItem? selectedDocument;
+    private string searchText = string.Empty;
+    private FilterOption? selectedTag = AllTags;
+    private FilterOption? selectedCorrespondent = AllCorrespondents;
+    private FilterOption? selectedDocumentType = AllTypes;
     private bool isBusy;
     private string statusMessage = "Unesite adresu Paperless servera i API token za prikaz dokumenata.";
 
     public DocumentsViewModel(PaperlessClient client)
     {
         this.client = client;
-        previousPageCommand = new PageCommand(
+        Preview = new DocumentPreviewViewModel(client);
+        previousPageCommand = new AsyncCommand(
             () => !IsBusy && currentPage?.HasPreviousPage == true,
-            () => LoadPageAsync(pageNumber - 1));
-        nextPageCommand = new PageCommand(
+            () => LoadPageAsync(pageNumber - 1, activeCriteria));
+        nextPageCommand = new AsyncCommand(
             () => !IsBusy && currentPage?.HasNextPage == true,
-            () => LoadPageAsync(pageNumber + 1));
+            () => LoadPageAsync(pageNumber + 1, activeCriteria));
+        applyFiltersCommand = new AsyncCommand(() => CanSearch, ApplyFiltersAsync);
+        clearFiltersCommand = new AsyncCommand(() => CanSearch && HasSearchInput, ClearFiltersAsync);
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+    public DocumentPreviewViewModel Preview { get; }
 
     public IReadOnlyList<DocumentListItem> Documents
     {
@@ -47,7 +61,13 @@ internal sealed class DocumentsViewModel : INotifyPropertyChanged, IDisposable
     public DocumentListItem? SelectedDocument
     {
         get => selectedDocument;
-        set => SetProperty(ref selectedDocument, value);
+        set
+        {
+            if (SetProperty(ref selectedDocument, value))
+            {
+                Preview.Show(value, server, token);
+            }
+        }
     }
 
     public bool IsBusy
@@ -55,13 +75,18 @@ internal sealed class DocumentsViewModel : INotifyPropertyChanged, IDisposable
         get => isBusy;
         private set
         {
-            SetProperty(ref isBusy, value);
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanConnect)));
-            RefreshNavigation();
+            if (SetProperty(ref isBusy, value))
+            {
+                NotifyPropertyChanged(nameof(CanConnect));
+                NotifyPropertyChanged(nameof(CanSearch));
+                RefreshCommands();
+            }
         }
     }
 
     public bool CanConnect => !IsBusy;
+    public bool CanSearch => !IsBusy && currentPage is not null;
+    public bool IsConnectionRequired => currentPage is null;
 
     public string PageLabel => currentPage is null ? string.Empty : $"Stranica {pageNumber}";
 
@@ -73,6 +98,45 @@ internal sealed class DocumentsViewModel : INotifyPropertyChanged, IDisposable
 
     public ICommand PreviousPageCommand => previousPageCommand;
     public ICommand NextPageCommand => nextPageCommand;
+    public ICommand ApplyFiltersCommand => applyFiltersCommand;
+    public ICommand ClearFiltersCommand => clearFiltersCommand;
+
+    public IReadOnlyList<FilterOption> Tags { get; private set; } = [AllTags];
+    public IReadOnlyList<FilterOption> Correspondents { get; private set; } = [AllCorrespondents];
+    public IReadOnlyList<FilterOption> DocumentTypes { get; private set; } = [AllTypes];
+
+    public string SearchText
+    {
+        get => searchText;
+        set
+        {
+            if (SetProperty(ref searchText, value))
+            {
+                clearFiltersCommand.Refresh();
+            }
+        }
+    }
+
+    public FilterOption? SelectedTag
+    {
+        get => selectedTag;
+        set => SetFilter(ref selectedTag, value);
+    }
+
+    public FilterOption? SelectedCorrespondent
+    {
+        get => selectedCorrespondent;
+        set => SetFilter(ref selectedCorrespondent, value);
+    }
+
+    public FilterOption? SelectedDocumentType
+    {
+        get => selectedDocumentType;
+        set => SetFilter(ref selectedDocumentType, value);
+    }
+
+    private bool HasSearchInput => !string.IsNullOrWhiteSpace(SearchText) || SelectedTag?.Id is not null ||
+        SelectedCorrespondent?.Id is not null || SelectedDocumentType?.Id is not null || activeCriteria != EmptyCriteria;
 
     public async Task<InvalidConnectionField> ConnectAsync(string address, string apiToken)
     {
@@ -98,13 +162,41 @@ internal sealed class DocumentsViewModel : INotifyPropertyChanged, IDisposable
 
         server = parsedServer;
         token = trimmedToken;
-        metadata = null;
+        SetMetadata(null);
+        ResetSearchInput();
+        activeCriteria = EmptyCriteria;
         SetPage(0, null);
-        await LoadPageAsync(1);
+        await LoadPageAsync(1, activeCriteria);
         return InvalidConnectionField.None;
     }
 
-    private async Task LoadPageAsync(int targetPage)
+    private Task ApplyFiltersAsync() => LoadPageAsync(1, new DocumentSearchCriteria(
+        string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim(),
+        SelectedTag?.Id, SelectedCorrespondent?.Id, SelectedDocumentType?.Id));
+
+    private Task ClearFiltersAsync()
+    {
+        ResetSearchInput();
+        return LoadPageAsync(1, EmptyCriteria);
+    }
+
+    private void ResetSearchInput()
+    {
+        SearchText = string.Empty;
+        SelectedTag = AllTags;
+        SelectedCorrespondent = AllCorrespondents;
+        SelectedDocumentType = AllTypes;
+    }
+
+    private void SetFilter(ref FilterOption? field, FilterOption? value, [CallerMemberName] string? name = null)
+    {
+        if (SetProperty(ref field, value, name))
+        {
+            clearFiltersCommand.Refresh();
+        }
+    }
+
+    private async Task LoadPageAsync(int targetPage, DocumentSearchCriteria criteria)
     {
         if (IsBusy || server is not { } activeServer)
         {
@@ -116,7 +208,7 @@ internal sealed class DocumentsViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            var pageTask = client.GetDocumentsAsync(activeServer, token, targetPage, lifetime.Token);
+            var pageTask = client.GetDocumentsAsync(activeServer, token, targetPage, criteria, lifetime.Token);
             var metadataTask = metadata is null
                 ? TryLoadMetadataAsync(activeServer, token, lifetime.Token)
                 : Task.FromResult<PaperlessDocumentMetadata?>(metadata);
@@ -124,15 +216,21 @@ internal sealed class DocumentsViewModel : INotifyPropertyChanged, IDisposable
             // Observe both requests before updating the page, even if one fails.
             await Task.WhenAll(pageTask, metadataTask);
             var page = await pageTask;
-            metadata = await metadataTask;
+            var loadedMetadata = await metadataTask;
+            if (loadedMetadata != metadata)
+            {
+                SetMetadata(loadedMetadata);
+            }
+
+            activeCriteria = criteria;
             SetPage(targetPage, page);
 
             StatusMessage = page.Count == 0
-                ? "Nema dokumenata za prikaz."
+                ? criteria == EmptyCriteria ? "Nema dokumenata za prikaz." : "Nema dokumenata za zadatu pretragu."
                 : $"Prikazano {page.Results.Count} od ukupno {page.Count} dokumenata.";
             if (metadata is null && page.Results.Count > 0)
             {
-                StatusMessage += " Nazivi tagova i tipova trenutno nisu dostupni.";
+                StatusMessage += " Nazivi metapodataka trenutno nisu dostupni.";
             }
         }
         catch (HttpRequestException exception)
@@ -188,9 +286,35 @@ internal sealed class DocumentsViewModel : INotifyPropertyChanged, IDisposable
         pageNumber = number;
         SelectedDocument = null;
         Documents = page?.Results.Select(CreateListItem).ToArray() ?? [];
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PageLabel)));
-        RefreshNavigation();
+        NotifyPropertyChanged(nameof(PageLabel));
+        NotifyPropertyChanged(nameof(CanSearch));
+        NotifyPropertyChanged(nameof(IsConnectionRequired));
+        RefreshCommands();
     }
+
+    private void SetMetadata(PaperlessDocumentMetadata? loaded)
+    {
+        metadata = loaded;
+        var tagId = SelectedTag?.Id;
+        var correspondentId = SelectedCorrespondent?.Id;
+        var documentTypeId = SelectedDocumentType?.Id;
+        Tags = CreateOptions(AllTags, loaded?.Tags);
+        Correspondents = CreateOptions(AllCorrespondents, loaded?.Correspondents);
+        DocumentTypes = CreateOptions(AllTypes, loaded?.DocumentTypes);
+        NotifyPropertyChanged(nameof(Tags));
+        NotifyPropertyChanged(nameof(Correspondents));
+        NotifyPropertyChanged(nameof(DocumentTypes));
+        SelectedTag = Tags.FirstOrDefault(option => option.Id == tagId) ?? AllTags;
+        SelectedCorrespondent = Correspondents.FirstOrDefault(option => option.Id == correspondentId) ?? AllCorrespondents;
+        SelectedDocumentType = DocumentTypes.FirstOrDefault(option => option.Id == documentTypeId) ?? AllTypes;
+        NotifyPropertyChanged(nameof(SelectedTag));
+        NotifyPropertyChanged(nameof(SelectedCorrespondent));
+        NotifyPropertyChanged(nameof(SelectedDocumentType));
+    }
+
+    private static IReadOnlyList<FilterOption> CreateOptions(FilterOption all, IReadOnlyDictionary<int, string>? names) =>
+        names is null ? [all] : [all, .. names.OrderBy(item => item.Value, StringComparer.CurrentCultureIgnoreCase)
+            .Select(item => new FilterOption(item.Key, item.Value))];
 
     private DocumentListItem CreateListItem(PaperlessDocument document)
     {
@@ -198,51 +322,31 @@ internal sealed class DocumentsViewModel : INotifyPropertyChanged, IDisposable
             ? metadata?.DocumentTypes.GetValueOrDefault(typeId) ?? $"Tip #{typeId}"
             : "Bez tipa";
         var tagNames = document.TagIds.Select(id => metadata?.Tags.GetValueOrDefault(id) ?? $"Tag #{id}");
-        return new DocumentListItem(document, typeName, document.TagIds.Count == 0 ? "Bez tagova" : string.Join(", ", tagNames));
+        var correspondentName = document.CorrespondentId is int correspondentId
+            ? metadata?.Correspondents.GetValueOrDefault(correspondentId) ?? $"Korespondent #{correspondentId}"
+            : "Bez korespondenta";
+        return new DocumentListItem(document, typeName,
+            document.TagIds.Count == 0 ? "Bez tagova" : string.Join(", ", tagNames), correspondentName);
     }
 
-    private void RefreshNavigation()
+    private void RefreshCommands()
     {
         previousPageCommand.Refresh();
         nextPageCommand.Refresh();
-    }
-
-    private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? name = null)
-    {
-        if (EqualityComparer<T>.Default.Equals(field, value))
-        {
-            return;
-        }
-
-        field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        applyFiltersCommand.Refresh();
+        clearFiltersCommand.Refresh();
     }
 
     public void Dispose()
     {
+        Preview.Dispose();
         lifetime.Cancel();
         lifetime.Dispose();
     }
-
-    private sealed class PageCommand(Func<bool> canExecute, Func<Task> execute) : ICommand
-    {
-        public event EventHandler? CanExecuteChanged;
-
-        public bool CanExecute(object? parameter) => canExecute();
-
-        public async void Execute(object? parameter)
-        {
-            if (canExecute())
-            {
-                await execute();
-            }
-        }
-
-        public void Refresh() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
-    }
 }
 
-internal sealed record DocumentListItem(PaperlessDocument Document, string TypeName, string TagNames);
+internal sealed record FilterOption(int? Id, string Name);
+internal sealed record DocumentListItem(PaperlessDocument Document, string TypeName, string TagNames, string CorrespondentName);
 
 internal enum InvalidConnectionField
 {

@@ -15,3 +15,5 @@ U aplikaciji unesite osnovnu adresu Paperless servera i važeći API token, pa i
 Adresu servera možete unaprijed zadati varijablom okruženja `PAPERLESS_SERVER_URL`.
 
 Dokumente možete pregledati u tabeli ili na karticama. Dugmad **Prethodna** i **Sljedeća** učitavaju odgovarajuću stranicu sa servera. Promjena prikaza zadržava trenutnu stranicu.
+
+Unesite ključne riječi ili odaberite tag, korespondenta i tip dokumenta, pa izaberite **Pretraži**. Izaberite dokument u rezultatima za prikaz metapodataka i pregleda. PDF pregled se lista strelicama, a tekst dokumenta je dostupan kada ga je Paperless prepoznao.
