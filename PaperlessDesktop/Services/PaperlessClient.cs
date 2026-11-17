@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -95,7 +97,8 @@ public sealed class PaperlessClient(HttpClient httpClient)
         using var download = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         download.CancelAfter(httpClient.Timeout);
 
-        using var request = CreateGetRequest(server, token, GetDocumentResource(documentId) + "/preview", null, "*/*");
+        using var request = CreateRequest(
+            HttpMethod.Get, server, token, GetDocumentResource(documentId) + "/preview", null, "*/*");
         using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, download.Token)
             .ConfigureAwait(false);
         EnsureSuccess(response);
@@ -128,18 +131,190 @@ public sealed class PaperlessClient(HttpClient httpClient)
         return new PaperlessDocumentPreview(content.ToArray(), response.Content.Headers.ContentType?.MediaType);
     }
 
+    public async Task<Guid> UploadDocumentAsync(
+        Uri server,
+        string token,
+        DocumentUploadRequest upload,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(upload);
+        ArgumentException.ThrowIfNullOrWhiteSpace(upload.FilePath);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var request = CreateRequest(HttpMethod.Post, server, token, "documents/post_document", null);
+        using var file = new FileStream(
+            upload.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        if (file.Length == 0)
+        {
+            throw new InvalidDataException("Choose a document file that is not empty.");
+        }
+
+        var form = new MultipartFormDataContent();
+        request.Content = form;
+        using var document = new StreamContent(file);
+        document.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        form.Add(document, "document", Path.GetFileName(upload.FilePath));
+
+        if (!string.IsNullOrWhiteSpace(upload.Title))
+        {
+            form.Add(new StringContent(upload.Title.Trim()), "title");
+        }
+
+        if (upload.Created is DateOnly created)
+        {
+            form.Add(new StringContent(created.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), "created");
+        }
+
+        AddFormId(form, "correspondent", upload.CorrespondentId, nameof(upload.CorrespondentId));
+        AddFormId(form, "document_type", upload.DocumentTypeId, nameof(upload.DocumentTypeId));
+        foreach (int tagId in upload.TagIds ?? [])
+        {
+            AddFormId(form, "tags", tagId, nameof(upload.TagIds));
+        }
+
+        string response = await SendJsonAsync<string>(request, cancellationToken).ConfigureAwait(false);
+        return Guid.TryParse(response, out var taskId) && taskId != Guid.Empty
+            ? taskId
+            : throw new JsonException("Paperless did not return a valid upload task ID.");
+    }
+
+    public async Task<PaperlessUploadTask?> GetUploadTaskAsync(
+        Uri server,
+        string token,
+        Guid taskId,
+        CancellationToken cancellationToken = default)
+    {
+        if (taskId == Guid.Empty)
+        {
+            throw new ArgumentException("An upload task ID is required.", nameof(taskId));
+        }
+
+        using var response = await GetJsonAsync<JsonDocument>(
+            server, token, "tasks", $"task_id={taskId:D}", cancellationToken).ConfigureAwait(false);
+        var root = response.RootElement;
+        var tasks = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("results", out var results)
+            ? results
+            : root;
+        if (tasks.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException("Paperless did not return a task list.");
+        }
+
+        foreach (var item in tasks.EnumerateArray())
+        {
+            var task = item.Deserialize<UploadTaskResponse>();
+            if (task?.TaskId == taskId)
+            {
+                if (string.IsNullOrWhiteSpace(task.Status))
+                {
+                    throw new JsonException("Paperless did not return the upload task status.");
+                }
+
+                return new PaperlessUploadTask(task.Status, task.DocumentId, task.Result);
+            }
+        }
+
+        return null;
+    }
+
+    public async Task<IReadOnlyList<PaperlessTag>> GetTagsAsync(
+        Uri server,
+        string token,
+        CancellationToken cancellationToken = default)
+    {
+        var tags = await GetAllItemsAsync<PaperlessTag>(
+            server, token, "tags", tag => tag.Id, cancellationToken).ConfigureAwait(false);
+        return [.. tags.Values];
+    }
+
+    public Task<PaperlessTag> CreateTagAsync(
+        Uri server,
+        string token,
+        string name,
+        string? color = null,
+        CancellationToken cancellationToken = default) =>
+        SaveTagAsync(HttpMethod.Post, server, token, "tags", name, color, cancellationToken);
+
+    public Task<PaperlessTag> UpdateTagAsync(
+        Uri server,
+        string token,
+        int tagId,
+        string name,
+        string? color = null,
+        CancellationToken cancellationToken = default) =>
+        SaveTagAsync(HttpMethod.Patch, server, token, GetTagResource(tagId), name, color, cancellationToken);
+
+    public async Task DeleteTagAsync(
+        Uri server,
+        string token,
+        int tagId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateRequest(HttpMethod.Delete, server, token, GetTagResource(tagId), null);
+        using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        EnsureSuccess(response);
+    }
+
+    private async Task<PaperlessTag> SaveTagAsync(
+        HttpMethod method,
+        Uri server,
+        string token,
+        string resource,
+        string name,
+        string? color,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        name = name.Trim();
+        if (name.EnumerateRunes().Count() > 128)
+        {
+            throw new ArgumentException("Tag names can contain up to 128 characters.", nameof(name));
+        }
+
+        var fields = new Dictionary<string, string> { ["name"] = name };
+        if (!string.IsNullOrWhiteSpace(color))
+        {
+            color = color.Trim();
+            if (color.Length != 7 || color[0] != '#' ||
+                !int.TryParse(color.AsSpan(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out _))
+            {
+                throw new ArgumentException("Tag color must use the #RRGGBB format.", nameof(color));
+            }
+
+            fields["color"] = color;
+        }
+
+        using var request = CreateRequest(method, server, token, resource, null);
+        request.Content = JsonContent.Create(fields);
+        return await SendJsonAsync<PaperlessTag>(request, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<IReadOnlyDictionary<int, string>> GetNamesAsync(
         Uri server,
         string token,
         string collection,
         CancellationToken cancellationToken)
     {
-        var names = new Dictionary<int, string>();
+        var items = await GetAllItemsAsync<NamedItemResponse>(
+            server, token, collection, item => item.Id, cancellationToken).ConfigureAwait(false);
+        return items.ToDictionary(item => item.Key, item => item.Value.Name);
+    }
+
+    private async Task<Dictionary<int, T>> GetAllItemsAsync<T>(
+        Uri server,
+        string token,
+        string collection,
+        Func<T, int> getId,
+        CancellationToken cancellationToken)
+    {
+        var items = new Dictionary<int, T>();
         int maximumPages = 0;
 
         for (int pageNumber = 1; ; pageNumber++)
         {
-            var page = await GetPageAsync<NamedItemResponse>(
+            var page = await GetPageAsync<T>(
                 server, token, collection, GetPageQuery(pageNumber), cancellationToken).ConfigureAwait(false);
 
             if (pageNumber == 1)
@@ -147,24 +322,24 @@ public sealed class PaperlessClient(HttpClient httpClient)
                 maximumPages = Math.Max(1, page.Count);
             }
 
-            int previousCount = names.Count;
+            int previousCount = items.Count;
             foreach (var item in page.Results)
             {
-                names[item.Id] = item.Name;
+                items[getId(item)] = item;
             }
 
             if (string.IsNullOrWhiteSpace(page.Next))
             {
-                if (names.Count != page.Count)
+                if (items.Count != page.Count)
                 {
                     throw new JsonException("Paperless returned an incomplete metadata list.");
                 }
 
-                return names;
+                return items;
             }
 
             // Each additional page must introduce at least one item from the reported total.
-            if (names.Count == previousCount || pageNumber >= maximumPages)
+            if (items.Count == previousCount || pageNumber >= maximumPages)
             {
                 throw new JsonException("Paperless metadata pagination did not progress.");
             }
@@ -197,7 +372,13 @@ public sealed class PaperlessClient(HttpClient httpClient)
         CancellationToken cancellationToken)
         where T : class
     {
-        using var request = CreateGetRequest(server, token, resource, query, "application/json");
+        using var request = CreateRequest(HttpMethod.Get, server, token, resource, query);
+        return await SendJsonAsync<T>(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<T> SendJsonAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)
+        where T : class
+    {
         using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         EnsureSuccess(response);
 
@@ -205,12 +386,13 @@ public sealed class PaperlessClient(HttpClient httpClient)
             ?? throw new JsonException("Paperless returned an empty JSON response.");
     }
 
-    private static HttpRequestMessage CreateGetRequest(
+    private static HttpRequestMessage CreateRequest(
+        HttpMethod method,
         Uri server,
         string token,
         string resource,
         string? query,
-        string accept)
+        string accept = "application/json")
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
@@ -228,7 +410,7 @@ public sealed class PaperlessClient(HttpClient httpClient)
         };
 
         var authorization = new AuthenticationHeaderValue("Token", token.Trim());
-        var request = new HttpRequestMessage(HttpMethod.Get, endpoint.Uri);
+        var request = new HttpRequestMessage(method, endpoint.Uri);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(accept));
         request.Headers.Authorization = authorization;
         return request;
@@ -255,6 +437,21 @@ public sealed class PaperlessClient(HttpClient httpClient)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(documentId, 1);
         return "documents/" + documentId.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string GetTagResource(int tagId)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(tagId, 1);
+        return "tags/" + tagId.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static void AddFormId(MultipartFormDataContent form, string field, int? id, string parameterName)
+    {
+        if (id is int value)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, parameterName);
+            form.Add(new StringContent(value.ToString(CultureInfo.InvariantCulture)), field);
+        }
     }
 
     private static void AddIdFilter(List<string> query, string key, int? id, string parameterName)
@@ -288,5 +485,21 @@ public sealed class PaperlessClient(HttpClient httpClient)
 
         [JsonPropertyName("name")]
         public required string Name { get; init; }
+    }
+
+    private sealed class UploadTaskResponse
+    {
+        [JsonPropertyName("task_id")]
+        public required Guid TaskId { get; init; }
+
+        [JsonPropertyName("status")]
+        public required string Status { get; init; }
+
+        [JsonPropertyName("related_document")]
+        [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+        public int? DocumentId { get; init; }
+
+        [JsonPropertyName("result")]
+        public string? Result { get; init; }
     }
 }
