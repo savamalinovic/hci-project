@@ -51,6 +51,10 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
     }
 
     public DocumentPreviewViewModel Preview { get; }
+    internal Guid? PendingUploadTaskId { get; private set; }
+
+    internal (Uri Server, string Token)? GetActiveConnection() =>
+        CanSearch && server is { } activeServer ? (activeServer, token) : null;
 
     public IReadOnlyList<DocumentListItem> Documents
     {
@@ -160,6 +164,11 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
             return InvalidConnectionField.Token;
         }
 
+        if (server != parsedServer || token != trimmedToken)
+        {
+            PendingUploadTaskId = null;
+        }
+
         server = parsedServer;
         token = trimmedToken;
         SetMetadata(null);
@@ -169,6 +178,26 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         await LoadPageAsync(1, activeCriteria);
         return InvalidConnectionField.None;
     }
+
+    internal async Task FinishUploadAsync(Guid? pendingTaskId, bool isCompleted, int? documentId)
+    {
+        PendingUploadTaskId = pendingTaskId;
+        if (isCompleted)
+        {
+            await LoadPageAsync(1, activeCriteria);
+            StatusMessage = $"Dokument je uspješno obrađen. {StatusMessage}";
+            if (documentId is int id)
+            {
+                SelectedDocument = Documents.FirstOrDefault(item => item.Document.Id == id);
+            }
+        }
+        else if (pendingTaskId is not null)
+        {
+            StatusMessage = "Dokument je poslan. U prozoru Dodaj dokument možete nastaviti provjeru statusa.";
+        }
+    }
+
+    internal Task RefreshAfterTagChangesAsync() => LoadPageAsync(1, activeCriteria, refreshMetadata: true);
 
     private Task ApplyFiltersAsync() => LoadPageAsync(1, new DocumentSearchCriteria(
         string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim(),
@@ -196,7 +225,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         }
     }
 
-    private async Task LoadPageAsync(int targetPage, DocumentSearchCriteria criteria)
+    private async Task LoadPageAsync(int targetPage, DocumentSearchCriteria criteria, bool refreshMetadata = false)
     {
         if (IsBusy || server is not { } activeServer)
         {
@@ -208,8 +237,25 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
 
         try
         {
+            if (refreshMetadata)
+            {
+                var refreshed = await TryLoadMetadataAsync(activeServer, token, lifetime.Token);
+                if (refreshed is not null)
+                {
+                    SetMetadata(refreshed);
+                    if (criteria.TagId is int tagId && !refreshed.Tags.ContainsKey(tagId))
+                    {
+                        criteria = criteria with { TagId = null };
+                    }
+                }
+                else
+                {
+                    metadata = null;
+                }
+            }
+
             var pageTask = client.GetDocumentsAsync(activeServer, token, targetPage, criteria, lifetime.Token);
-            var metadataTask = metadata is null
+            var metadataTask = metadata is null && !refreshMetadata
                 ? TryLoadMetadataAsync(activeServer, token, lifetime.Token)
                 : Task.FromResult<PaperlessDocumentMetadata?>(metadata);
 

@@ -128,7 +128,14 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock Text="Dokumenti" FontSize="19" FontWeight="SemiBold" Margin="0,0,0,8" />
+                <DockPanel Margin="0,0,0,8">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" IsEnabled="{Binding CanSearch}">
+                        <Button Content="_Dodaj dokument" Click="UploadDocument_Click" MinHeight="30" Padding="10,3" />
+                        <Button Content="_Upravljaj tagovima" Click="ManageTags_Click" MinHeight="30" Padding="10,3"
+                                Margin="8,0,0,0" />
+                    </StackPanel>
+                    <TextBlock Text="Dokumenti" FontSize="19" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </DockPanel>
                 <TabControl x:Name="DocumentViews" Grid.Row="1" BorderBrush="#D9E3DE" Background="White"
                             AutomationProperties.Name="Prikaz dokumenata">
                     <TabItem Header="Tabela" Padding="14,4">
