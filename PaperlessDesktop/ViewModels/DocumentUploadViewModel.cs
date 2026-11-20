@@ -19,7 +19,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
     private readonly AsyncCommand checkStatusCommand;
     private string? filePath;
     private string title = string.Empty;
-    private string status = "Izaberite fajl za učitavanje.";
+    private string statusKey = "UploadChooseFile";
     private bool isBusy;
     private bool isSending;
     private Guid? taskId;
@@ -34,16 +34,17 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
         taskId = pendingTaskId;
         if (taskId is not null)
         {
-            Status = "Možete nastaviti provjeru statusa prethodno poslanog dokumenta.";
+            statusKey = "UploadResumeStatus";
         }
 
         Tags = tags.Where(tag => tag.Id.HasValue).Select(tag => new UploadTagOption(tag.Id!.Value, tag.Name)).ToArray();
-        Correspondents = [new FilterOption(null, "Bez korespondenta"), .. correspondents.Where(option => option.Id.HasValue)];
-        DocumentTypes = [new FilterOption(null, "Bez tipa"), .. documentTypes.Where(option => option.Id.HasValue)];
+        Correspondents = [new FilterOption(null, "NoCorrespondent", localized: true), .. correspondents.Where(option => option.Id.HasValue)];
+        DocumentTypes = [new FilterOption(null, "NoType", localized: true), .. documentTypes.Where(option => option.Id.HasValue)];
         SelectedCorrespondent = Correspondents[0];
         SelectedDocumentType = DocumentTypes[0];
         submitCommand = new AsyncCommand(() => CanEdit && filePath is not null, SubmitAsync);
         checkStatusCommand = new AsyncCommand(() => CanCheckStatus, CheckStatusAsync);
+        LocalizationService.LanguageChanged += OnLanguageChanged;
     }
 
     public IReadOnlyList<UploadTagOption> Tags { get; }
@@ -54,7 +55,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
     public string CreatedText { get; set; } = string.Empty;
 
     public string FileName => filePath is null
-        ? taskId is null ? "Nijedan fajl nije izabran" : "Prethodno poslani dokument"
+        ? LocalizationService.Text(taskId is null ? "UploadNoFile" : "UploadPreviousFile")
         : Path.GetFileName(filePath);
     public bool IsBusy => isBusy;
     public bool CanEdit => !isBusy && taskId is null && !IsCompleted;
@@ -72,11 +73,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
         set => SetProperty(ref title, value);
     }
 
-    public string Status
-    {
-        get => status;
-        private set => SetProperty(ref status, value);
-    }
+    public string Status => LocalizationService.Text(statusKey);
 
     public void SelectFile(string selectedPath)
     {
@@ -88,7 +85,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
         }
 
         NotifyPropertyChanged(nameof(FileName));
-        Status = "Pregledajte metapodatke pa pošaljite dokument.";
+        SetStatus("UploadReviewMetadata");
         UpdateState();
     }
 
@@ -105,7 +102,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
             if (!DateOnly.TryParseExact(CreatedText.Trim(), ["yyyy-MM-dd", "d.M.yyyy"], CultureInfo.InvariantCulture,
                     DateTimeStyles.None, out var parsedDate))
             {
-                Status = "Unesite datum u formatu GGGG-MM-DD ili dan.mjesec.godina.";
+                SetStatus("UploadInvalidDate");
                 return;
             }
 
@@ -119,7 +116,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
         isBusy = true;
         isSending = true;
         UpdateState();
-        Status = "Slanje dokumenta…";
+        SetStatus("UploadSending");
 
         try
         {
@@ -130,7 +127,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
         {
             if (!lifetime.IsCancellationRequested)
             {
-                Status = GetUploadError(error);
+                SetStatus(GetUploadErrorKey(error));
             }
         }
         finally
@@ -158,7 +155,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
 
         isBusy = true;
         UpdateState();
-        Status = "Dokument je primljen. Čeka se obrada na serveru…";
+        SetStatus("UploadAccepted");
 
         using var tracking = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         tracking.CancelAfter(TimeSpan.FromMinutes(1));
@@ -173,17 +170,17 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
                     case "SUCCESS":
                         ImportedDocumentId = task.DocumentId;
                         IsCompleted = true;
-                        Status = "Dokument je uspješno obrađen.";
+                        SetStatus("UploadProcessed");
                         return;
                     case "FAILURE":
                     case "REVOKED":
                         taskId = null;
-                        Status = task.Result?.Contains("duplicate", StringComparison.OrdinalIgnoreCase) == true
-                            ? "Ovaj dokument već postoji u Paperlessu."
-                            : "Paperless nije uspio obraditi dokument. Provjerite fajl i pokušajte ponovo.";
+                        SetStatus(task.Result?.Contains("duplicate", StringComparison.OrdinalIgnoreCase) == true
+                            ? "UploadDuplicate"
+                            : "UploadProcessingFailed");
                         return;
                     case "STARTED":
-                        Status = "Paperless obrađuje dokument…";
+                        SetStatus("UploadProcessing");
                         break;
                 }
 
@@ -196,11 +193,11 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
         }
         catch (OperationCanceledException) when (tracking.IsCancellationRequested)
         {
-            Status = "Obrada još traje. Možete ponovo provjeriti status.";
+            SetStatus("UploadStillProcessing");
         }
         catch (Exception error) when (error is HttpRequestException or JsonException or OperationCanceledException)
         {
-            Status = "Status obrade trenutno nije dostupan. Ponovo provjerite status.";
+            SetStatus("UploadStatusUnavailable");
         }
         finally
         {
@@ -221,29 +218,35 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
                 return true;
             }
 
-            Status = "Izabrani fajl je prazan.";
+            SetStatus("UploadEmptyFile");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            Status = "Izabrani fajl nije dostupan. Izaberite fajl ponovo.";
+            SetStatus("UploadFileUnavailable");
         }
 
         return false;
     }
 
-    private static string GetUploadError(Exception error) => error switch
+    private static string GetUploadErrorKey(Exception error) => error switch
     {
-        HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden } =>
-            "Nemate dozvolu za slanje dokumenata.",
-        HttpRequestException { StatusCode: HttpStatusCode.RequestEntityTooLarge } =>
-            "Fajl je veći nego što server dozvoljava.",
-        HttpRequestException { StatusCode: HttpStatusCode.UnsupportedMediaType } =>
-            "Server ne podržava format izabranog fajla.",
-        HttpRequestException { StatusCode: HttpStatusCode.BadRequest } =>
-            "Server je odbio fajl ili metapodatke. Provjerite unos.",
-        IOException or UnauthorizedAccessException => "Izabrani fajl se ne može pročitati.",
-        _ => "Server nije potvrdio prijem. Provjerite listu dokumenata prije ponovnog slanja."
+        HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden } => "UploadAccessDenied",
+        HttpRequestException { StatusCode: HttpStatusCode.RequestEntityTooLarge } => "UploadFileTooLarge",
+        HttpRequestException { StatusCode: HttpStatusCode.UnsupportedMediaType } => "UploadFileTypeUnsupported",
+        HttpRequestException { StatusCode: HttpStatusCode.BadRequest } => "UploadRejected",
+        IOException or UnauthorizedAccessException => "UploadUnreadableFile",
+        _ => "UploadUnconfirmed",
     };
+
+    private void SetStatus(string key) => SetProperty(ref statusKey, key, nameof(Status));
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        NotifyPropertyChanged(nameof(Status));
+        NotifyPropertyChanged(nameof(FileName));
+        Correspondents[0].RefreshName();
+        DocumentTypes[0].RefreshName();
+    }
 
     private void UpdateState()
     {
@@ -259,6 +262,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
 
     public void Dispose()
     {
+        LocalizationService.LanguageChanged -= OnLanguageChanged;
         lifetime.Cancel();
         lifetime.Dispose();
     }

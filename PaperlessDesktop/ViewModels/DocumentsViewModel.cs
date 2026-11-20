@@ -10,9 +10,9 @@ namespace PaperlessDesktop.ViewModels;
 
 internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
 {
-    private static readonly FilterOption AllTags = new(null, "Svi tagovi");
-    private static readonly FilterOption AllCorrespondents = new(null, "Svi korespondenti");
-    private static readonly FilterOption AllTypes = new(null, "Svi tipovi");
+    private static readonly FilterOption AllTags = new(null, "AllTags", localized: true);
+    private static readonly FilterOption AllCorrespondents = new(null, "AllCorrespondents", localized: true);
+    private static readonly FilterOption AllTypes = new(null, "AllTypes", localized: true);
     private static readonly DocumentSearchCriteria EmptyCriteria = new();
 
     private readonly PaperlessClient client;
@@ -34,7 +34,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
     private FilterOption? selectedCorrespondent = AllCorrespondents;
     private FilterOption? selectedDocumentType = AllTypes;
     private bool isBusy;
-    private string statusMessage = "Unesite adresu Paperless servera i API token za prikaz dokumenata.";
+    private LocalizedMessage statusMessage = new("DocumentsConnectPrompt");
 
     public DocumentsViewModel(PaperlessClient client)
     {
@@ -48,6 +48,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
             () => LoadPageAsync(pageNumber + 1, activeCriteria));
         applyFiltersCommand = new AsyncCommand(() => CanSearch, ApplyFiltersAsync);
         clearFiltersCommand = new AsyncCommand(() => CanSearch && HasSearchInput, ClearFiltersAsync);
+        LocalizationService.LanguageChanged += OnLanguageChanged;
     }
 
     public DocumentPreviewViewModel Preview { get; }
@@ -92,13 +93,8 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
     public bool CanSearch => !IsBusy && currentPage is not null;
     public bool IsConnectionRequired => currentPage is null;
 
-    public string PageLabel => currentPage is null ? string.Empty : $"Stranica {pageNumber}";
-
-    public string StatusMessage
-    {
-        get => statusMessage;
-        private set => SetProperty(ref statusMessage, value);
-    }
+    public string PageLabel => currentPage is null ? string.Empty : LocalizationService.Format("PageNumber", pageNumber);
+    public string StatusMessage => statusMessage.ToString();
 
     public ICommand PreviousPageCommand => previousPageCommand;
     public ICommand NextPageCommand => nextPageCommand;
@@ -153,14 +149,14 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
             parsedServer.Scheme is not ("http" or "https") ||
             parsedServer.UserInfo.Length != 0 || parsedServer.Query.Length != 0 || parsedServer.Fragment.Length != 0)
         {
-            StatusMessage = "Unesite ispravnu adresu servera koja počinje sa http:// ili https://.";
+            SetStatus(new("InvalidServerAddress"));
             return InvalidConnectionField.Address;
         }
 
         var trimmedToken = apiToken.Trim();
         if (trimmedToken.Length == 0 || trimmedToken.Any(char.IsWhiteSpace))
         {
-            StatusMessage = "Unesite API token bez razmaka.";
+            SetStatus(new("MissingApiToken"));
             return InvalidConnectionField.Token;
         }
 
@@ -185,7 +181,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         if (isCompleted)
         {
             await LoadPageAsync(1, activeCriteria);
-            StatusMessage = $"Dokument je uspješno obrađen. {StatusMessage}";
+            SetStatus(new("DocumentsUploadSuccess", statusMessage));
             if (documentId is int id)
             {
                 SelectedDocument = Documents.FirstOrDefault(item => item.Document.Id == id);
@@ -193,7 +189,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         }
         else if (pendingTaskId is not null)
         {
-            StatusMessage = "Dokument je poslan. U prozoru Dodaj dokument možete nastaviti provjeru statusa.";
+            SetStatus(new("DocumentsUploadPending"));
         }
     }
 
@@ -233,7 +229,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         }
 
         IsBusy = true;
-        StatusMessage = $"Učitavanje stranice {targetPage}…";
+        SetStatus(new("DocumentsLoading", targetPage));
 
         try
         {
@@ -271,29 +267,26 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
             activeCriteria = criteria;
             SetPage(targetPage, page);
 
-            StatusMessage = page.Count == 0
-                ? criteria == EmptyCriteria ? "Nema dokumenata za prikaz." : "Nema dokumenata za zadatu pretragu."
-                : $"Prikazano {page.Results.Count} od ukupno {page.Count} dokumenata.";
-            if (metadata is null && page.Results.Count > 0)
-            {
-                StatusMessage += " Nazivi metapodataka trenutno nisu dostupni.";
-            }
+            var resultMessage = page.Count == 0
+                ? new LocalizedMessage(criteria == EmptyCriteria ? "DocumentsEmpty" : "SearchEmpty")
+                : new LocalizedMessage("DocumentsFound", page.Results.Count, page.Count);
+            SetStatus(metadata is null && page.Results.Count > 0
+                ? new("DocumentsMetadataUnavailable", resultMessage)
+                : resultMessage);
         }
         catch (HttpRequestException exception)
         {
-            StatusMessage = exception.StatusCode switch
+            SetStatus(exception.StatusCode switch
             {
-                HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
-                    "Pristup dokumentima je odbijen. Provjerite API token i dozvole.",
-                HttpStatusCode.NotFound =>
-                    "Stranica nije pronađena. Provjerite adresu servera ili ponovo učitajte dokumente.",
-                null => "Server nije dostupan. Provjerite adresu servera i mrežnu vezu.",
-                _ => $"Server je vratio grešku ({(int)exception.StatusCode.Value}). Pokušajte ponovo."
-            };
+                HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new("DocumentsAccessDenied"),
+                HttpStatusCode.NotFound => new("DocumentsPageMissing"),
+                null => new("DocumentsServerUnavailable"),
+                _ => new("ServerHttpError", (int)exception.StatusCode.Value),
+            });
         }
         catch (JsonException)
         {
-            StatusMessage = "Server nije vratio očekivanu listu. Provjerite adresu Paperless servera.";
+            SetStatus(new("DocumentsInvalidResponse"));
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
         {
@@ -301,7 +294,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         }
         catch (OperationCanceledException)
         {
-            StatusMessage = "Server nije odgovorio na vrijeme. Pokušajte ponovo.";
+            SetStatus(new("ServerNoResponse"));
         }
         finally
         {
@@ -331,7 +324,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         currentPage = page;
         pageNumber = number;
         SelectedDocument = null;
-        Documents = page?.Results.Select(CreateListItem).ToArray() ?? [];
+        Documents = page?.Results.Select(document => new DocumentListItem(document, metadata)).ToArray() ?? [];
         NotifyPropertyChanged(nameof(PageLabel));
         NotifyPropertyChanged(nameof(CanSearch));
         NotifyPropertyChanged(nameof(IsConnectionRequired));
@@ -362,17 +355,23 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         names is null ? [all] : [all, .. names.OrderBy(item => item.Value, StringComparer.CurrentCultureIgnoreCase)
             .Select(item => new FilterOption(item.Key, item.Value))];
 
-    private DocumentListItem CreateListItem(PaperlessDocument document)
+    private void SetStatus(LocalizedMessage message)
     {
-        var typeName = document.DocumentTypeId is int typeId
-            ? metadata?.DocumentTypes.GetValueOrDefault(typeId) ?? $"Tip #{typeId}"
-            : "Bez tipa";
-        var tagNames = document.TagIds.Select(id => metadata?.Tags.GetValueOrDefault(id) ?? $"Tag #{id}");
-        var correspondentName = document.CorrespondentId is int correspondentId
-            ? metadata?.Correspondents.GetValueOrDefault(correspondentId) ?? $"Korespondent #{correspondentId}"
-            : "Bez korespondenta";
-        return new DocumentListItem(document, typeName,
-            document.TagIds.Count == 0 ? "Bez tagova" : string.Join(", ", tagNames), correspondentName);
+        statusMessage = message;
+        NotifyPropertyChanged(nameof(StatusMessage));
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        NotifyPropertyChanged(nameof(StatusMessage));
+        NotifyPropertyChanged(nameof(PageLabel));
+        AllTags.RefreshName();
+        AllCorrespondents.RefreshName();
+        AllTypes.RefreshName();
+        foreach (var document in Documents)
+        {
+            document.RefreshLanguage();
+        }
     }
 
     private void RefreshCommands()
@@ -385,14 +384,50 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
 
     public void Dispose()
     {
+        LocalizationService.LanguageChanged -= OnLanguageChanged;
         Preview.Dispose();
         lifetime.Cancel();
         lifetime.Dispose();
     }
 }
 
-internal sealed record FilterOption(int? Id, string Name);
-internal sealed record DocumentListItem(PaperlessDocument Document, string TypeName, string TagNames, string CorrespondentName);
+internal sealed class FilterOption(int? id, string name, bool localized = false) : ObservableViewModel
+{
+    public int? Id { get; } = id;
+    public string Name => localized ? LocalizationService.Text(name) : name;
+
+    internal void RefreshName() => NotifyPropertyChanged(nameof(Name));
+}
+
+internal sealed class DocumentListItem(PaperlessDocument document, PaperlessDocumentMetadata? metadata) : ObservableViewModel
+{
+    public PaperlessDocument Document { get; } = document;
+
+    public string CreatedDisplay => Document.Created is DateOnly date
+        ? LocalizationService.Format("DocumentDateFormat", date)
+        : LocalizationService.Text("NoDocumentDate");
+
+    public string TypeName => Document.DocumentTypeId is int id
+        ? metadata?.DocumentTypes.GetValueOrDefault(id) ?? LocalizationService.Format("DocumentTypeFallback", id)
+        : LocalizationService.Text("NoType");
+
+    public string CorrespondentName => Document.CorrespondentId is int id
+        ? metadata?.Correspondents.GetValueOrDefault(id) ?? LocalizationService.Format("CorrespondentFallback", id)
+        : LocalizationService.Text("NoCorrespondent");
+
+    public string TagNames => Document.TagIds.Count == 0
+        ? LocalizationService.Text("NoTags")
+        : string.Join(", ", Document.TagIds.Select(id =>
+            metadata?.Tags.GetValueOrDefault(id) ?? LocalizationService.Format("TagFallback", id)));
+
+    internal void RefreshLanguage()
+    {
+        NotifyPropertyChanged(nameof(CreatedDisplay));
+        NotifyPropertyChanged(nameof(TypeName));
+        NotifyPropertyChanged(nameof(CorrespondentName));
+        NotifyPropertyChanged(nameof(TagNames));
+    }
+}
 
 internal enum InvalidConnectionField
 {

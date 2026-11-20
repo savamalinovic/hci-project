@@ -20,7 +20,7 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
     private PaperlessTag? selectedTag;
     private string nameInput = string.Empty;
     private string colorInput = string.Empty;
-    private string notice = string.Empty;
+    private LocalizedMessage? notice;
     private bool hasLoaded;
     private bool isBusy;
 
@@ -31,6 +31,7 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         this.token = token;
         refreshCommand = new AsyncCommand(() => !IsBusy, LoadAsync);
         saveCommand = new AsyncCommand(() => CanEdit && CanSave(), SaveAsync);
+        LocalizationService.LanguageChanged += OnLanguageChanged;
     }
 
     public IReadOnlyList<PaperlessTag> Tags
@@ -80,11 +81,7 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         }
     }
 
-    public string Notice
-    {
-        get => notice;
-        private set => SetProperty(ref notice, value);
-    }
+    public string Notice => notice?.ToString() ?? string.Empty;
 
     public bool IsBusy
     {
@@ -105,22 +102,20 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
     public bool CanDelete => CanEdit && SelectedTag is not null;
     public bool CanClose { get; private set; } = true;
     public bool TagsChanged { get; private set; }
-    public string EditorTitle => SelectedTag is null ? "Novi tag" : "Uredi tag";
-    public string ColorHint => SelectedTag is null
-        ? "Format #RRGGBB. Prazno polje koristi zadanu boju."
-        : "Format #RRGGBB. Prazno polje zadržava postojeću boju.";
+    public string EditorTitle => LocalizationService.Text(SelectedTag is null ? "TagEditorNew" : "TagEditorEdit");
+    public string ColorHint => LocalizationService.Text(SelectedTag is null ? "TagColorHintNew" : "TagColorHintEdit");
     public ICommand RefreshCommand => refreshCommand;
     public ICommand SaveCommand => saveCommand;
 
     public Task LoadAsync() => LoadAsync(null);
 
-    private Task LoadAsync(string? successNotice) => RunAsync(Operation.Load, "Učitavanje tagova…", async cancellationToken =>
+    private Task LoadAsync(LocalizedMessage? successNotice) => RunAsync(Operation.Load, "TagsLoading", async cancellationToken =>
     {
         var loadedTags = await client.GetTagsAsync(server, token, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         SetTags(loadedTags, SelectedTag?.Id);
         hasLoaded = true;
-        Notice = successNotice ?? (Tags.Count == 0 ? "Još nema tagova. Možete dodati prvi." : string.Empty);
+        SetNotice(successNotice ?? (Tags.Count == 0 ? new LocalizedMessage("TagsEmpty") : null));
     });
 
     public void StartNewTag()
@@ -133,7 +128,7 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         SelectedTag = null;
         NameInput = string.Empty;
         ColorInput = string.Empty;
-        Notice = string.Empty;
+        SetNotice(null);
     }
 
     public async Task DeleteAsync(PaperlessTag tag)
@@ -144,7 +139,7 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         }
 
         var deleted = false;
-        await RunAsync(Operation.Delete, "Brisanje taga…", async cancellationToken =>
+        await RunAsync(Operation.Delete, "TagDeleting", async cancellationToken =>
         {
             await client.DeleteTagAsync(server, token, tag.Id, cancellationToken);
             TagsChanged = true;
@@ -156,12 +151,13 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         if (deleted)
         {
             // Paperless may also delete descendants of the selected tag.
-            await LoadAsync($"Tag „{tag.Name}“ je obrisan.");
+            await LoadAsync(new("TagDeleted", tag.Name));
         }
     }
 
     public void Dispose()
     {
+        LocalizationService.LanguageChanged -= OnLanguageChanged;
         lifetime.Cancel();
         lifetime.Dispose();
     }
@@ -177,13 +173,13 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         var name = NameInput.Trim();
         if (name.Length == 0)
         {
-            Notice = "Unesite naziv taga.";
+            SetNotice(new("TagMissingName"));
             return Task.CompletedTask;
         }
 
         if (name.EnumerateRunes().Count() > 128)
         {
-            Notice = "Naziv taga može imati najviše 128 znakova.";
+            SetNotice(new("TagNameTooLong"));
             return Task.CompletedTask;
         }
 
@@ -191,13 +187,13 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         if (enteredColor.Length != 0 &&
             (enteredColor.Length != 7 || enteredColor[0] != '#' || enteredColor[1..].Any(character => !char.IsAsciiHexDigit(character))))
         {
-            Notice = "Unesite boju u formatu #RRGGBB, na primjer #17664F.";
+            SetNotice(new("InvalidAccentColor"));
             return Task.CompletedTask;
         }
 
         var color = enteredColor.Length == 0 ? null : enteredColor;
         var editingId = SelectedTag?.Id;
-        return RunAsync(Operation.Save, "Čuvanje taga…", async cancellationToken =>
+        return RunAsync(Operation.Save, "TagSaving", async cancellationToken =>
         {
             var savedTag = editingId is int id
                 ? await client.UpdateTagAsync(server, token, id, name, color, cancellationToken)
@@ -205,9 +201,7 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
             TagsChanged = true;
             cancellationToken.ThrowIfCancellationRequested();
             SetTags(Tags.Where(tag => tag.Id != savedTag.Id).Append(savedTag), savedTag.Id);
-            Notice = editingId is null
-                ? $"Tag „{savedTag.Name}“ je dodat."
-                : $"Tag „{savedTag.Name}“ je ažuriran.";
+            SetNotice(new(editingId is null ? "TagCreated" : "TagUpdated", savedTag.Name));
         });
     }
 
@@ -222,7 +216,7 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         }
     }
 
-    private async Task RunAsync(Operation operation, string progress, Func<CancellationToken, Task> action)
+    private async Task RunAsync(Operation operation, string progressKey, Func<CancellationToken, Task> action)
     {
         if (IsBusy || lifetime.IsCancellationRequested)
         {
@@ -233,7 +227,7 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         IsBusy = true;
         CanClose = operation == Operation.Load;
         NotifyPropertyChanged(nameof(CanClose));
-        Notice = progress;
+        SetNotice(new(progressKey));
         try
         {
             await action(cancellationToken);
@@ -243,11 +237,11 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         }
         catch (OperationCanceledException)
         {
-            SetUnconfirmedResult(operation, "Server nije odgovorio na vrijeme.");
+            SetUnconfirmedResult(operation, "TagServerNoResponse");
         }
         catch (HttpRequestException exception) when (exception.StatusCode is null || (int)exception.StatusCode >= 500)
         {
-            SetUnconfirmedResult(operation, "Paperless server nije dostupan.");
+            SetUnconfirmedResult(operation, "TagServerUnavailable");
         }
         catch (HttpRequestException exception)
         {
@@ -256,18 +250,17 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
                 TagsChanged = true;
             }
 
-            Notice = exception.StatusCode switch
+            SetNotice(new(exception.StatusCode switch
             {
-                HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "Nemate dozvolu za ovu radnju nad tagovima.",
-                HttpStatusCode.BadRequest or HttpStatusCode.Conflict when operation == Operation.Save =>
-                    "Server nije prihvatio tag. Provjerite naziv, boju i postoji li već tag s tim nazivom.",
-                HttpStatusCode.NotFound when operation != Operation.Load => "Tag više nije dostupan. Osvježite listu.",
-                _ => "Server nije mogao izvršiti radnju nad tagovima. Pokušajte ponovo."
-            };
+                HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "TagAccessDenied",
+                HttpStatusCode.BadRequest or HttpStatusCode.Conflict when operation == Operation.Save => "TagRejected",
+                HttpStatusCode.NotFound when operation != Operation.Load => "TagNotFound",
+                _ => "TagRequestFailed",
+            }));
         }
         catch (JsonException)
         {
-            SetUnconfirmedResult(operation, "Server je vratio neočekivan odgovor.");
+            SetUnconfirmedResult(operation, "TagUnexpectedResponse");
         }
         finally
         {
@@ -280,17 +273,26 @@ internal sealed class TagManagerViewModel : ObservableViewModel, IDisposable
         }
     }
 
-    private void SetUnconfirmedResult(Operation operation, string message)
+    private void SetUnconfirmedResult(Operation operation, string messageKey)
     {
         if (operation == Operation.Load)
         {
-            Notice = $"{message} Pokušajte osvježiti listu.";
+            SetNotice(new("TagRefreshRetry", new LocalizedMessage(messageKey)));
             return;
         }
 
         // A write may already have reached the server even if the response was lost.
         TagsChanged = true;
-        Notice = $"{message} Osvježite listu prije ponavljanja izmjene.";
+        SetNotice(new("TagUnconfirmedWrite", new LocalizedMessage(messageKey)));
+    }
+
+    private void SetNotice(LocalizedMessage? message) => SetProperty(ref notice, message, nameof(Notice));
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        NotifyPropertyChanged(nameof(Notice));
+        NotifyPropertyChanged(nameof(EditorTitle));
+        NotifyPropertyChanged(nameof(ColorHint));
     }
 
     private enum Operation

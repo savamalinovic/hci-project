@@ -18,7 +18,7 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
     private DocumentListItem? item;
     private BitmapSource? image;
     private string extractedText = string.Empty;
-    private string notice = string.Empty;
+    private string? noticeKey;
     private int pageIndex;
     private int pageCount;
     private bool isRendering;
@@ -30,6 +30,7 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
             () => !isRendering && pageIndex > 0, () => ChangePageAsync(pageIndex - 1));
         nextPageCommand = new AsyncCommand(
             () => !isRendering && pageIndex + 1 < pageCount, () => ChangePageAsync(pageIndex + 1));
+        LocalizationService.LanguageChanged += OnLanguageChanged;
     }
 
     public DocumentListItem? Item => item;
@@ -37,10 +38,14 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
     public BitmapSource? Image => image;
     public string ExtractedText => extractedText;
     public bool HasExtractedText => extractedText.Length > 0;
-    public string Notice => notice;
-    public bool HasNotice => notice.Length > 0;
+    public string Notice => noticeKey is { } key ? LocalizationService.Text(key) : string.Empty;
+    public bool HasNotice => noticeKey is not null;
     public bool HasMultiplePages => pageCount > 1;
-    public string PageLabel => $"{pageIndex + 1} / {pageCount}";
+    public string PageLabel => LocalizationService.Format("PreviewPageNumber", pageIndex + 1, pageCount);
+    public string TypeLabel => item is null ? string.Empty : LocalizationService.Format("PreviewTypeLabel", item.TypeName);
+    public string CorrespondentLabel => item is null ? string.Empty : LocalizationService.Format(
+        "PreviewCorrespondentLabel", item.CorrespondentName);
+    public string TagsLabel => item is null ? string.Empty : LocalizationService.Format("PreviewTagsLabel", item.TagNames);
     public ICommand PreviousPageCommand => previousPageCommand;
     public ICommand NextPageCommand => nextPageCommand;
 
@@ -49,9 +54,10 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
         StopSession();
         SetProperty(ref item, selected, nameof(Item));
         NotifyPropertyChanged(nameof(HasSelection));
+        UpdateMetadataLabels();
         SetProperty(ref image, null, nameof(Image));
         SetExtractedText(string.Empty);
-        SetNotice(string.Empty);
+        SetNotice(null);
         pageIndex = 0;
         pageCount = 0;
         isRendering = false;
@@ -64,7 +70,7 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
 
         var active = new PreviewSession();
         session = active;
-        SetNotice("Učitavanje pregleda…");
+        SetNotice("PreviewLoading");
         active.Operation = Task.WhenAll(
             LoadTextAsync(active, server, token, selected.Document.Id),
             LoadImageAsync(active, server, token, selected.Document.Id));
@@ -95,7 +101,7 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
             cancellationToken.ThrowIfCancellationRequested();
             if (active.Renderer is not { } renderer)
             {
-                SetNotice("Vizuelni pregled nije dostupan za ovaj format. Tekst pročitajte ispod ako je dostupan.");
+                SetNotice("PreviewUnsupported");
                 return;
             }
 
@@ -104,13 +110,13 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
             SetProperty(ref image, firstImage, nameof(Image));
             pageCount = renderer.PageCount;
             UpdatePageNavigation();
-            SetNotice(string.Empty);
+            SetNotice(null);
         }
         catch (Exception error) when (IsPreviewError(error))
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                SetNotice(GetPreviewErrorMessage(error));
+                SetNotice(GetPreviewErrorKey(error));
             }
         }
     }
@@ -133,20 +139,20 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
         var cancellationToken = active.Cancellation.Token;
         isRendering = true;
         UpdatePageNavigation();
-        SetNotice("Učitavanje stranice pregleda…");
+        SetNotice("PreviewPageLoading");
         try
         {
             var renderedImage = await renderer.RenderPageAsync(targetIndex, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             SetProperty(ref image, renderedImage, nameof(Image));
             pageIndex = targetIndex;
-            SetNotice(string.Empty);
+            SetNotice(null);
         }
         catch (Exception error) when (IsPreviewError(error))
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                SetNotice("Stranica pregleda nije učitana. Pokušajte ponovo.");
+                SetNotice("PreviewPageFailed");
             }
         }
         finally
@@ -162,14 +168,13 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
     private static bool IsPreviewError(Exception error) => error is HttpRequestException or OperationCanceledException
         or IOException or InvalidDataException or FormatException or ArgumentException or NotSupportedException or COMException;
 
-    private static string GetPreviewErrorMessage(Exception error) => error switch
+    private static string GetPreviewErrorKey(Exception error) => error switch
     {
-        HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden } =>
-            "Nemate dozvolu za pregled ovog dokumenta.",
-        HttpRequestException { StatusCode: HttpStatusCode.NotFound } => "Pregled ovog dokumenta nije dostupan na serveru.",
-        OperationCanceledException => "Server nije na vrijeme poslao pregled. Ponovo odaberite dokument.",
-        HttpRequestException => "Pregled nije preuzet. Provjerite mrežnu vezu i ponovo odaberite dokument.",
-        _ => "Dokument nije moguće prikazati. Tekst pročitajte ispod ako je dostupan."
+        HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden } => "PreviewAccessDenied",
+        HttpRequestException { StatusCode: HttpStatusCode.NotFound } => "PreviewMissing",
+        OperationCanceledException => "PreviewTimeout",
+        HttpRequestException => "PreviewDownloadFailed",
+        _ => "PreviewRenderFailed",
     };
 
     private void SetExtractedText(string text)
@@ -180,12 +185,26 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
         }
     }
 
-    private void SetNotice(string message)
+    private void SetNotice(string? key)
     {
-        if (SetProperty(ref notice, message, nameof(Notice)))
+        if (SetProperty(ref noticeKey, key, nameof(Notice)))
         {
             NotifyPropertyChanged(nameof(HasNotice));
         }
+    }
+
+    private void UpdateMetadataLabels()
+    {
+        NotifyPropertyChanged(nameof(TypeLabel));
+        NotifyPropertyChanged(nameof(CorrespondentLabel));
+        NotifyPropertyChanged(nameof(TagsLabel));
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        NotifyPropertyChanged(nameof(Notice));
+        NotifyPropertyChanged(nameof(PageLabel));
+        UpdateMetadataLabels();
     }
 
     private void UpdatePageNavigation()
@@ -206,7 +225,11 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
         }
     }
 
-    public void Dispose() => StopSession();
+    public void Dispose()
+    {
+        LocalizationService.LanguageChanged -= OnLanguageChanged;
+        StopSession();
+    }
 
     private sealed class PreviewSession
     {
