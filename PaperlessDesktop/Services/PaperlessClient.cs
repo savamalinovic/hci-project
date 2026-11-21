@@ -40,6 +40,11 @@ public sealed class PaperlessClient(HttpClient httpClient)
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
+        if (criteria.CreatedFrom is DateOnly start && criteria.CreatedTo is DateOnly end && start > end)
+        {
+            throw new ArgumentException("The start date must be on or before the end date.", nameof(criteria));
+        }
+
         var query = new List<string> { GetPageQuery(pageNumber), "truncate_content=true" };
         if (!string.IsNullOrWhiteSpace(criteria.Text))
         {
@@ -50,6 +55,16 @@ public sealed class PaperlessClient(HttpClient httpClient)
         AddIdFilter(query, "tags__id__all", criteria.TagId, nameof(criteria.TagId));
         AddIdFilter(query, "correspondent__id", criteria.CorrespondentId, nameof(criteria.CorrespondentId));
         AddIdFilter(query, "document_type__id", criteria.DocumentTypeId, nameof(criteria.DocumentTypeId));
+
+        if (criteria.CreatedFrom is DateOnly from)
+        {
+            query.Add("created__date__gte=" + from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        }
+
+        if (criteria.CreatedTo is DateOnly to)
+        {
+            query.Add("created__date__lte=" + to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        }
 
         var page = await GetPageAsync<PaperlessDocument>(
             server, token, "documents", string.Join('&', query), cancellationToken).ConfigureAwait(false);
