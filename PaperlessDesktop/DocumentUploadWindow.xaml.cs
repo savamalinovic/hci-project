@@ -26,9 +26,9 @@ public partial class DocumentUploadWindow : Window
     {
         var picker = new OpenFileDialog
         {
-            Title = "Izaberite dokument",
+            Title = LocalizationService.Text("ChooseDocumentTitle"),
             CheckFileExists = true,
-            Filter = "Dokumenti i slike|*.pdf;*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.webp;*.txt;*.docx|Svi fajlovi|*.*"
+            Filter = LocalizationService.Text("ChooseDocumentFilter")
         };
         if (picker.ShowDialog(this) == true)
         {

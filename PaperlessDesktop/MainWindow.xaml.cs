@@ -44,6 +44,15 @@ public partial class MainWindow : Window
 
     private void PreviewImage_TargetUpdated(object sender, DataTransferEventArgs e) => PreviewScroll.ScrollToTop();
 
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        if (Application.Current is App app)
+        {
+            var settings = new SettingsWindow(app) { Owner = this };
+            settings.ShowDialog();
+        }
+    }
+
     private async void UploadDocument_Click(object sender, RoutedEventArgs e)
     {
         if (viewModel.GetActiveConnection() is { } connection)

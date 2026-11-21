@@ -21,3 +21,5 @@ Unesite ključne riječi ili odaberite tag, korespondenta i tip dokumenta, pa iz
 U prozoru **Dodaj dokument** izaberite fajl, po želji unesite metapodatke i pokrenite slanje. Prikaz razlikuje slanje od obrade na serveru. Ako zatvorite prozor nakon prijema, možete ga ponovo otvoriti da nastavite provjeru statusa u istoj sesiji.
 
 Prozor **Upravljaj tagovima** omogućava kreiranje, uređivanje i brisanje tagova. Nakon promjene lista dokumenata i filteri učitavaju ažurirane nazive.
+
+U prozoru **Podešavanja** odaberite svijetlu ili tamnu temu, akcentnu boju i srpski ili engleski jezik. Akcent se bira RGB klizačima ili unosom vrijednosti u formatu `#RRGGBB`. Promjene se primjenjuju nakon čuvanja. Aplikacija ih ponovo učitava iz `%LOCALAPPDATA%\PaperlessDesktop\settings.json` pri pokretanju.

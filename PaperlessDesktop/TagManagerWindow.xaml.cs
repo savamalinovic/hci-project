@@ -38,8 +38,8 @@ public partial class TagManagerWindow : Window
         }
 
         var choice = MessageBox.Show(this,
-            $"Obrisati tag „{tag.Name}“? Obrisat će se i njegovi podtagovi, ako ih ima, a dodjele će biti uklonjene s dokumenata.",
-            "Brisanje taga", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            LocalizationService.Format("DeleteTagPrompt", tag.Name),
+            LocalizationService.Text("DeleteTagTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
         if (choice == MessageBoxResult.Yes)
         {
             await viewModel.DeleteAsync(tag);
