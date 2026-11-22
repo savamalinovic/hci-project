@@ -157,4 +157,22 @@
     <sys:String x:Key="TagUnexpectedResponse">Server je vratio neočekivan odgovor.</sys:String>
     <sys:String x:Key="TagRefreshRetry">{0} Pokušajte osvježiti listu.</sys:String>
     <sys:String x:Key="TagUnconfirmedWrite">{0} Osvježite listu prije ponavljanja izmjene.</sys:String>
+    <sys:String x:Key="NaturalSearchHeading">Pretraga prirodnim jezikom</sys:String>
+    <sys:String x:Key="NaturalQueryLabel">_Upit</sys:String>
+    <sys:String x:Key="NaturalInterpretButton">_Protumači</sys:String>
+    <sys:String x:Key="NaturalExample">Primjer: „Nađi račune iz juna 2025.“</sys:String>
+    <sys:String x:Key="NaturalFiltersHeading">Predloženi filteri</sys:String>
+    <sys:String x:Key="NaturalFromLabel">Datum _od (GGGG-MM-DD)</sys:String>
+    <sys:String x:Key="NaturalToLabel">Datum d_o (GGGG-MM-DD)</sys:String>
+    <sys:String x:Key="NaturalInterpreting">Tumačenje upita…</sys:String>
+    <sys:String x:Key="NaturalGeminiResult">Gemini je predložio ove filtere. Možete ih urediti prije pretrage.</sys:String>
+    <sys:String x:Key="NaturalLocalNoKey">Gemini nije podešen. Filtere je predložio lokalni parser.</sys:String>
+    <sys:String x:Key="NaturalLocalAfterError">Gemini trenutno nije dostupan. Filtere je predložio lokalni parser.</sys:String>
+    <sys:String x:Key="NaturalNeedsReview">{0} Dio upita je nejasan. Pregledajte i po potrebi dopunite filtere.</sys:String>
+    <sys:String x:Key="NaturalInvalidDate">Unesite datum u formatu GGGG-MM-DD.</sys:String>
+    <sys:String x:Key="NaturalReversedDates">Početni datum mora biti prije ili isti kao završni datum.</sys:String>
+    <sys:String x:Key="NaturalEmptyCriteria">Unesite ključne riječi ili izaberite barem jedan filter.</sys:String>
+    <sys:String x:Key="NaturalActiveDateRange">Datum dokumenta: {0} – {1}</sys:String>
+    <sys:String x:Key="NaturalActiveDateFrom">Datum dokumenta od: {0}</sys:String>
+    <sys:String x:Key="NaturalActiveDateTo">Datum dokumenta do: {0}</sys:String>
 </ResourceDictionary>

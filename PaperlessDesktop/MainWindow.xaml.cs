@@ -10,6 +10,10 @@ public partial class MainWindow : Window
 {
     private readonly HttpClient httpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
     private readonly HttpClient uploadHttpClient = new() { Timeout = TimeSpan.FromMinutes(2) };
+    private readonly HttpClient geminiHttpClient = new(new HttpClientHandler { AllowAutoRedirect = false })
+    {
+        Timeout = TimeSpan.FromSeconds(18),
+    };
     private readonly PaperlessClient client;
     private readonly DocumentsViewModel viewModel;
 
@@ -53,6 +57,19 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void NaturalSearch_Click(object sender, RoutedEventArgs e)
+    {
+        var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+        var model = Environment.GetEnvironmentVariable("GEMINI_MODEL");
+        var gemini = string.IsNullOrWhiteSpace(apiKey) ? null : new GeminiSearchInterpreter(geminiHttpClient,
+            apiKey.Trim(), string.IsNullOrWhiteSpace(model) ? "gemini-3.5-flash-lite" : model.Trim());
+        var search = new NaturalSearchWindow(viewModel, gemini) { Owner = this };
+        if (search.ShowDialog() == true && search.Criteria is { } criteria)
+        {
+            await viewModel.ApplyNaturalSearchAsync(criteria);
+        }
+    }
+
     private async void UploadDocument_Click(object sender, RoutedEventArgs e)
     {
         if (viewModel.GetActiveConnection() is { } connection)
@@ -80,6 +97,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         viewModel.Dispose();
+        geminiHttpClient.Dispose();
         uploadHttpClient.Dispose();
         httpClient.Dispose();
         base.OnClosed(e);

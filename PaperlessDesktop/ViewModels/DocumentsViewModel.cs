@@ -53,6 +53,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
 
     public DocumentPreviewViewModel Preview { get; }
     internal Guid? PendingUploadTaskId { get; private set; }
+    internal PaperlessDocumentMetadata? SearchMetadata => metadata;
 
     internal (Uri Server, string Token)? GetActiveConnection() =>
         CanSearch && server is { } activeServer ? (activeServer, token) : null;
@@ -95,6 +96,14 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
 
     public string PageLabel => currentPage is null ? string.Empty : LocalizationService.Format("PageNumber", pageNumber);
     public string StatusMessage => statusMessage.ToString();
+    public bool HasDateCriteria => activeCriteria.CreatedFrom is not null || activeCriteria.CreatedTo is not null;
+    public string DateCriteriaLabel => (activeCriteria.CreatedFrom, activeCriteria.CreatedTo) switch
+    {
+        (DateOnly from, DateOnly to) => LocalizationService.Format("NaturalActiveDateRange", DisplayDate(from), DisplayDate(to)),
+        (DateOnly from, null) => LocalizationService.Format("NaturalActiveDateFrom", DisplayDate(from)),
+        (null, DateOnly to) => LocalizationService.Format("NaturalActiveDateTo", DisplayDate(to)),
+        _ => string.Empty,
+    };
 
     public ICommand PreviousPageCommand => previousPageCommand;
     public ICommand NextPageCommand => nextPageCommand;
@@ -195,9 +204,22 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
 
     internal Task RefreshAfterTagChangesAsync() => LoadPageAsync(1, activeCriteria, refreshMetadata: true);
 
+    internal async Task ApplyNaturalSearchAsync(DocumentSearchCriteria criteria)
+    {
+        await LoadPageAsync(1, criteria);
+        if (activeCriteria == criteria)
+        {
+            SearchText = criteria.Text ?? string.Empty;
+            SelectedTag = Tags.FirstOrDefault(option => option.Id == criteria.TagId) ?? AllTags;
+            SelectedCorrespondent = Correspondents.FirstOrDefault(option => option.Id == criteria.CorrespondentId) ?? AllCorrespondents;
+            SelectedDocumentType = DocumentTypes.FirstOrDefault(option => option.Id == criteria.DocumentTypeId) ?? AllTypes;
+        }
+    }
+
     private Task ApplyFiltersAsync() => LoadPageAsync(1, new DocumentSearchCriteria(
         string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim(),
-        SelectedTag?.Id, SelectedCorrespondent?.Id, SelectedDocumentType?.Id));
+        SelectedTag?.Id, SelectedCorrespondent?.Id, SelectedDocumentType?.Id,
+        activeCriteria.CreatedFrom, activeCriteria.CreatedTo));
 
     private Task ClearFiltersAsync()
     {
@@ -326,6 +348,8 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         SelectedDocument = null;
         Documents = page?.Results.Select(document => new DocumentListItem(document, metadata)).ToArray() ?? [];
         NotifyPropertyChanged(nameof(PageLabel));
+        NotifyPropertyChanged(nameof(HasDateCriteria));
+        NotifyPropertyChanged(nameof(DateCriteriaLabel));
         NotifyPropertyChanged(nameof(CanSearch));
         NotifyPropertyChanged(nameof(IsConnectionRequired));
         RefreshCommands();
@@ -365,6 +389,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
     {
         NotifyPropertyChanged(nameof(StatusMessage));
         NotifyPropertyChanged(nameof(PageLabel));
+        NotifyPropertyChanged(nameof(DateCriteriaLabel));
         AllTags.RefreshName();
         AllCorrespondents.RefreshName();
         AllTypes.RefreshName();
@@ -373,6 +398,8 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
             document.RefreshLanguage();
         }
     }
+
+    private static string DisplayDate(DateOnly date) => LocalizationService.Format("DocumentDateFormat", date);
 
     private void RefreshCommands()
     {

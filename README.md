@@ -23,3 +23,11 @@ U prozoru **Dodaj dokument** izaberite fajl, po želji unesite metapodatke i pok
 Prozor **Upravljaj tagovima** omogućava kreiranje, uređivanje i brisanje tagova. Nakon promjene lista dokumenata i filteri učitavaju ažurirane nazive.
 
 U prozoru **Podešavanja** odaberite svijetlu ili tamnu temu, akcentnu boju i srpski ili engleski jezik. Akcent se bira RGB klizačima ili unosom vrijednosti u formatu `#RRGGBB`. Promjene se primjenjuju nakon čuvanja. Aplikacija ih ponovo učitava iz `%LOCALAPPDATA%\PaperlessDesktop\settings.json` pri pokretanju.
+
+## Pretraga prirodnim jezikom
+
+Nakon učitavanja dokumenata otvorite **Pretraga prirodnim jezikom**. Unesite, na primjer, „Nađi račune iz juna 2025.“ i izaberite **Protumači**. Pregledajte i po potrebi uredite predložene filtere, pa izaberite **Pretraži**. Datumske granice su uključive, a **Očisti** uklanja i datum i ostale filtere.
+
+Za tumačenje putem Geminija postavite `GEMINI_API_KEY` u okruženju iz kojeg pokrećete aplikaciju. `GEMINI_MODEL` je opciona zamjena za podrazumijevani `gemini-3.5-flash-lite`. Ključ se ne sprema u lokalne postavke. Gemini dobija upit, trenutni datum i raspoložive nazive i ID-jeve filtera. Paperless token i sadržaj dokumenata koriste se samo u komunikaciji s Paperlessom.
+
+Ako Gemini nije podešen ili ne odgovori, aplikacija označi prijedlog lokalnog parsera. Lokalni parser pokriva jednostavne upite na srpskom i engleskom, a filtere možeš dopuniti ručno prije pretrage.

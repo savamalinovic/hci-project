@@ -157,4 +157,22 @@
     <sys:String x:Key="TagUnexpectedResponse">The server returned an unexpected response.</sys:String>
     <sys:String x:Key="TagRefreshRetry">{0} Try refreshing the list.</sys:String>
     <sys:String x:Key="TagUnconfirmedWrite">{0} Refresh the list before trying the change again.</sys:String>
+    <sys:String x:Key="NaturalSearchHeading">Natural language search</sys:String>
+    <sys:String x:Key="NaturalQueryLabel">_Query</sys:String>
+    <sys:String x:Key="NaturalInterpretButton">_Interpret</sys:String>
+    <sys:String x:Key="NaturalExample">Example: “Find invoices from June 2025.”</sys:String>
+    <sys:String x:Key="NaturalFiltersHeading">Suggested filters</sys:String>
+    <sys:String x:Key="NaturalFromLabel">Date _from (YYYY-MM-DD)</sys:String>
+    <sys:String x:Key="NaturalToLabel">Date _to (YYYY-MM-DD)</sys:String>
+    <sys:String x:Key="NaturalInterpreting">Interpreting the query…</sys:String>
+    <sys:String x:Key="NaturalGeminiResult">Gemini suggested these filters. You can edit them before searching.</sys:String>
+    <sys:String x:Key="NaturalLocalNoKey">Gemini is not configured. The local parser suggested these filters.</sys:String>
+    <sys:String x:Key="NaturalLocalAfterError">Gemini is currently unavailable. The local parser suggested these filters.</sys:String>
+    <sys:String x:Key="NaturalNeedsReview">{0} Part of the query is unclear. Review and complete the filters.</sys:String>
+    <sys:String x:Key="NaturalInvalidDate">Enter a date in YYYY-MM-DD format.</sys:String>
+    <sys:String x:Key="NaturalReversedDates">The start date must be on or before the end date.</sys:String>
+    <sys:String x:Key="NaturalEmptyCriteria">Enter keywords or choose at least one filter.</sys:String>
+    <sys:String x:Key="NaturalActiveDateRange">Document date: {0} – {1}</sys:String>
+    <sys:String x:Key="NaturalActiveDateFrom">Document date from: {0}</sys:String>
+    <sys:String x:Key="NaturalActiveDateTo">Document date through: {0}</sys:String>
 </ResourceDictionary>
