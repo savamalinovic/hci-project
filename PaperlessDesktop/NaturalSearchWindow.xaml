@@ -15,7 +15,17 @@
 
     <StackPanel Margin="24">
         <TextBlock FontSize="25" FontWeight="SemiBold" Text="{DynamicResource NaturalSearchHeading}" />
-        <Label Content="{DynamicResource NaturalQueryLabel}" Target="{Binding ElementName=NaturalQuery}" Margin="0,14,0,0" />
+        <TextBlock Text="{DynamicResource NaturalInterpreterLabel}" Margin="0,14,0,6" />
+        <StackPanel Orientation="Horizontal" IsEnabled="{Binding CanEditQuery}">
+            <RadioButton Content="{DynamicResource NaturalGeminiOption}" IsChecked="{Binding UseGemini, Mode=TwoWay}"
+                         GroupName="Interpreter" Margin="0,0,16,0" />
+            <RadioButton Content="{DynamicResource NaturalLocalOption}" IsChecked="{Binding UseLocalParser, Mode=TwoWay}"
+                         GroupName="Interpreter" />
+        </StackPanel>
+        <CheckBox Content="{DynamicResource NaturalIncludeTitles}" IsChecked="{Binding IncludeDocumentTitles, Mode=TwoWay}"
+                  IsEnabled="{Binding CanEditQuery}" Margin="0,8,0,0"
+                  Visibility="{Binding UseGemini, Converter={StaticResource BooleanToVisibility}}" />
+        <Label Content="{DynamicResource NaturalQueryLabel}" Target="{Binding ElementName=NaturalQuery}" Margin="0,12,0,0" />
         <DockPanel>
             <Button DockPanel.Dock="Right" Content="{DynamicResource NaturalInterpretButton}" Command="{Binding InterpretCommand}"
                     Margin="8,0,0,0" Style="{StaticResource ActionButtonStyle}" />
@@ -78,6 +88,20 @@
                                  MinHeight="32" Padding="8,4" VerticalContentAlignment="Center" />
                     </StackPanel>
                 </Grid>
+                <StackPanel Margin="0,9,0,0" Visibility="{Binding HasProposedDocuments, Converter={StaticResource BooleanToVisibility}}">
+                    <TextBlock Text="{DynamicResource NaturalSuggestedDocuments}" FontWeight="SemiBold" Margin="0,0,0,5" />
+                    <ScrollViewer MaxHeight="105" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding ProposedDocuments}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="0,2">
+                                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                                    </CheckBox>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
             </StackPanel>
         </Border>
 

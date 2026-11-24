@@ -27,6 +27,12 @@ internal sealed class GeminiSearchInterpreter(HttpClient httpClient, string apiK
         search term as literal text when applicable. The text field is a single literal title or OCR substring; do not
         include command words, already matched metadata, date phrases, or search operators in it.
 
+        When documentTitles is supplied, use its ID-to-title map to identify specific documents for topical requests or
+        named titles. For example, a request for books about plants may match a title about botany even if no tag or type
+        matches. Return only clearly relevant documentIds from that map, at most 50. Use null if no title match is
+        justified or no catalog is supplied. Do not add text for the same topic already satisfied by the matched titles.
+        Keep explicit additional constraints. A catalog can be partial, so do not infer that other documents do not exist.
+
         Dates refer to document creation. Return inclusive ISO dates. Use today's supplied date for relative phrases, such
         as prošlog mjeseca / last month. A named month without a year is in the current calendar year. For a month or
         year return its first and last days. For a specific day use the same date on both ends.
@@ -46,9 +52,10 @@ internal sealed class GeminiSearchInterpreter(HttpClient httpClient, string apiK
             "documentTypeId": { "type": ["integer", "null"] },
             "createdFrom": { "type": ["string", "null"], "format": "date" },
             "createdTo": { "type": ["string", "null"], "format": "date" },
+            "documentIds": { "type": ["array", "null"], "items": { "type": "integer" }, "maxItems": 50 },
             "needsClarification": { "type": "boolean" }
           },
-          "required": ["text", "tagId", "correspondentId", "documentTypeId", "createdFrom", "createdTo", "needsClarification"],
+          "required": ["text", "tagId", "correspondentId", "documentTypeId", "createdFrom", "createdTo", "documentIds", "needsClarification"],
           "additionalProperties": false
         }
         """);
@@ -79,7 +86,8 @@ internal sealed class GeminiSearchInterpreter(HttpClient httpClient, string apiK
             today = request.Today.ToString(DateFormat, CultureInfo.InvariantCulture),
             tags = request.Metadata?.Tags,
             correspondents = request.Metadata?.Correspondents,
-            documentTypes = request.Metadata?.DocumentTypes
+            documentTypes = request.Metadata?.DocumentTypes,
+            documentTitles = request.DocumentTitles
         });
 
         using var message = new HttpRequestMessage(HttpMethod.Post, endpoint);
@@ -106,7 +114,7 @@ internal sealed class GeminiSearchInterpreter(HttpClient httpClient, string apiK
 
             using var envelope = await ReadResponseAsync(response.Content, timeout.Token).ConfigureAwait(false);
             timeout.Token.ThrowIfCancellationRequested();
-            return ParseInterpretation(envelope.RootElement, request.Metadata);
+            return ParseInterpretation(envelope.RootElement, request);
         }
         catch (HttpRequestException exception)
         {
@@ -181,7 +189,7 @@ internal sealed class GeminiSearchInterpreter(HttpClient httpClient, string apiK
         return JsonDocument.Parse(buffer.AsMemory(0, length), new JsonDocumentOptions { MaxDepth = 24 });
     }
 
-    private static NaturalSearchInterpretation ParseInterpretation(JsonElement root, PaperlessDocumentMetadata? metadata)
+    private static NaturalSearchInterpretation ParseInterpretation(JsonElement root, NaturalSearchRequest request)
     {
         if (!TryReadProperty(root, "candidates", JsonValueKind.Array, out var candidates) || candidates.GetArrayLength() == 0)
         {
@@ -218,13 +226,21 @@ internal sealed class GeminiSearchInterpreter(HttpClient httpClient, string apiK
             throw new InvalidDataException(InvalidResponse);
         }
 
+        var metadata = request.Metadata;
+        var ids = output.DocumentIds;
+        if (ids is { Length: > 50 } || ids?.Any(id => id <= 0 || request.DocumentTitles?.ContainsKey(id) != true) == true)
+        {
+            throw new InvalidDataException(InvalidResponse);
+        }
+
         var criteria = new DocumentSearchCriteria(
             Text: literalText,
             TagId: ValidateId(output.TagId, metadata?.Tags),
             CorrespondentId: ValidateId(output.CorrespondentId, metadata?.Correspondents),
             DocumentTypeId: ValidateId(output.DocumentTypeId, metadata?.DocumentTypes),
             CreatedFrom: createdFrom,
-            CreatedTo: createdTo);
+            CreatedTo: createdTo,
+            DocumentIds: ids is { Length: > 0 } ? ids.Distinct().ToArray() : null);
         return new NaturalSearchInterpretation(criteria, output.NeedsClarification || criteria == new DocumentSearchCriteria());
     }
 
@@ -267,6 +283,7 @@ internal sealed class GeminiSearchInterpreter(HttpClient httpClient, string apiK
         public required int? DocumentTypeId { get; init; }
         public required string? CreatedFrom { get; init; }
         public required string? CreatedTo { get; init; }
+        public required int[]? DocumentIds { get; init; }
         public required bool NeedsClarification { get; init; }
     }
 }

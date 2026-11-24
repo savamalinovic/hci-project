@@ -166,8 +166,12 @@
     <sys:String x:Key="NaturalToLabel">Date _to (YYYY-MM-DD)</sys:String>
     <sys:String x:Key="NaturalInterpreting">Interpreting the query…</sys:String>
     <sys:String x:Key="NaturalGeminiResult">Gemini suggested these filters. You can edit them before searching.</sys:String>
-    <sys:String x:Key="NaturalLocalNoKey">Gemini is not configured. The local parser suggested these filters.</sys:String>
-    <sys:String x:Key="NaturalLocalAfterError">Gemini is currently unavailable. The local parser suggested these filters.</sys:String>
+    <sys:String x:Key="NaturalInterpreterLabel">Interpretation method</sys:String>
+    <sys:String x:Key="NaturalGeminiOption">Gemini</sys:String>
+    <sys:String x:Key="NaturalLocalOption">Local parser</sys:String>
+    <sys:String x:Key="NaturalLocalResult">The local parser suggested these filters. You can edit them before searching.</sys:String>
+    <sys:String x:Key="NaturalGeminiMissingKey">Set GEMINI_API_KEY and restart the application, or select Local parser.</sys:String>
+    <sys:String x:Key="NaturalGeminiFailed">Gemini could not interpret the query. Try again or select Local parser.</sys:String>
     <sys:String x:Key="NaturalNeedsReview">{0} Part of the query is unclear. Review and complete the filters.</sys:String>
     <sys:String x:Key="NaturalInvalidDate">Enter a date in YYYY-MM-DD format.</sys:String>
     <sys:String x:Key="NaturalReversedDates">The start date must be on or before the end date.</sys:String>
@@ -175,4 +179,8 @@
     <sys:String x:Key="NaturalActiveDateRange">Document date: {0} – {1}</sys:String>
     <sys:String x:Key="NaturalActiveDateFrom">Document date from: {0}</sys:String>
     <sys:String x:Key="NaturalActiveDateTo">Document date through: {0}</sys:String>
+    <sys:String x:Key="NaturalIncludeTitles">Send up to 250 document titles and IDs to Gemini</sys:String>
+    <sys:String x:Key="NaturalSuggestedDocuments">Suggested documents</sys:String>
+    <sys:String x:Key="NaturalSelectDocument">Select at least one suggested document, or interpret again without sending titles.</sys:String>
+    <sys:String x:Key="NaturalActiveDocuments">Search is restricted to {0} selected documents.</sys:String>
 </ResourceDictionary>

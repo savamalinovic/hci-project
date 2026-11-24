@@ -166,8 +166,12 @@
     <sys:String x:Key="NaturalToLabel">Datum d_o (GGGG-MM-DD)</sys:String>
     <sys:String x:Key="NaturalInterpreting">Tumačenje upita…</sys:String>
     <sys:String x:Key="NaturalGeminiResult">Gemini je predložio ove filtere. Možete ih urediti prije pretrage.</sys:String>
-    <sys:String x:Key="NaturalLocalNoKey">Gemini nije podešen. Filtere je predložio lokalni parser.</sys:String>
-    <sys:String x:Key="NaturalLocalAfterError">Gemini trenutno nije dostupan. Filtere je predložio lokalni parser.</sys:String>
+    <sys:String x:Key="NaturalInterpreterLabel">Način tumačenja</sys:String>
+    <sys:String x:Key="NaturalGeminiOption">Gemini</sys:String>
+    <sys:String x:Key="NaturalLocalOption">Lokalni parser</sys:String>
+    <sys:String x:Key="NaturalLocalResult">Lokalni parser je predložio ove filtere. Možete ih urediti prije pretrage.</sys:String>
+    <sys:String x:Key="NaturalGeminiMissingKey">Za Gemini postavite GEMINI_API_KEY i ponovo pokrenite aplikaciju ili izaberite Lokalni parser.</sys:String>
+    <sys:String x:Key="NaturalGeminiFailed">Gemini nije mogao protumačiti upit. Pokušajte ponovo ili izaberite Lokalni parser.</sys:String>
     <sys:String x:Key="NaturalNeedsReview">{0} Dio upita je nejasan. Pregledajte i po potrebi dopunite filtere.</sys:String>
     <sys:String x:Key="NaturalInvalidDate">Unesite datum u formatu GGGG-MM-DD.</sys:String>
     <sys:String x:Key="NaturalReversedDates">Početni datum mora biti prije ili isti kao završni datum.</sys:String>
@@ -175,4 +179,8 @@
     <sys:String x:Key="NaturalActiveDateRange">Datum dokumenta: {0} – {1}</sys:String>
     <sys:String x:Key="NaturalActiveDateFrom">Datum dokumenta od: {0}</sys:String>
     <sys:String x:Key="NaturalActiveDateTo">Datum dokumenta do: {0}</sys:String>
+    <sys:String x:Key="NaturalIncludeTitles">Pošalji Geminiju nazive i ID-jeve do 250 dokumenata</sys:String>
+    <sys:String x:Key="NaturalSuggestedDocuments">Predloženi dokumenti</sys:String>
+    <sys:String x:Key="NaturalSelectDocument">Označite barem jedan predloženi dokument ili ponovo protumačite upit bez slanja naziva.</sys:String>
+    <sys:String x:Key="NaturalActiveDocuments">Pretraga je ograničena na {0} izabranih dokumenata.</sys:String>
 </ResourceDictionary>

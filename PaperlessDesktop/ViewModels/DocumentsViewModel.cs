@@ -55,6 +55,9 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
     internal Guid? PendingUploadTaskId { get; private set; }
     internal PaperlessDocumentMetadata? SearchMetadata => metadata;
 
+    internal Task<IReadOnlyDictionary<int, string>> GetDocumentTitlesAsync(CancellationToken cancellationToken) =>
+        client.GetDocumentTitlesAsync(server!, token, cancellationToken);
+
     internal (Uri Server, string Token)? GetActiveConnection() =>
         CanSearch && server is { } activeServer ? (activeServer, token) : null;
 
@@ -97,6 +100,8 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
     public string PageLabel => currentPage is null ? string.Empty : LocalizationService.Format("PageNumber", pageNumber);
     public string StatusMessage => statusMessage.ToString();
     public bool HasDateCriteria => activeCriteria.CreatedFrom is not null || activeCriteria.CreatedTo is not null;
+    public bool HasDocumentSelection => activeCriteria.DocumentIds is { Count: > 0 };
+    public string DocumentSelectionLabel => LocalizationService.Format("NaturalActiveDocuments", activeCriteria.DocumentIds?.Count ?? 0);
     public string DateCriteriaLabel => (activeCriteria.CreatedFrom, activeCriteria.CreatedTo) switch
     {
         (DateOnly from, DateOnly to) => LocalizationService.Format("NaturalActiveDateRange", DisplayDate(from), DisplayDate(to)),
@@ -219,7 +224,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
     private Task ApplyFiltersAsync() => LoadPageAsync(1, new DocumentSearchCriteria(
         string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim(),
         SelectedTag?.Id, SelectedCorrespondent?.Id, SelectedDocumentType?.Id,
-        activeCriteria.CreatedFrom, activeCriteria.CreatedTo));
+        activeCriteria.CreatedFrom, activeCriteria.CreatedTo, activeCriteria.DocumentIds));
 
     private Task ClearFiltersAsync()
     {
@@ -349,6 +354,8 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         Documents = page?.Results.Select(document => new DocumentListItem(document, metadata)).ToArray() ?? [];
         NotifyPropertyChanged(nameof(PageLabel));
         NotifyPropertyChanged(nameof(HasDateCriteria));
+        NotifyPropertyChanged(nameof(HasDocumentSelection));
+        NotifyPropertyChanged(nameof(DocumentSelectionLabel));
         NotifyPropertyChanged(nameof(DateCriteriaLabel));
         NotifyPropertyChanged(nameof(CanSearch));
         NotifyPropertyChanged(nameof(IsConnectionRequired));
@@ -387,6 +394,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
 
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
+        NotifyPropertyChanged(nameof(DocumentSelectionLabel));
         NotifyPropertyChanged(nameof(StatusMessage));
         NotifyPropertyChanged(nameof(PageLabel));
         NotifyPropertyChanged(nameof(DateCriteriaLabel));

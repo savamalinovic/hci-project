@@ -30,4 +30,6 @@ Nakon učitavanja dokumenata otvorite **Pretraga prirodnim jezikom**. Unesite, n
 
 Za tumačenje putem Geminija postavite `GEMINI_API_KEY` u okruženju iz kojeg pokrećete aplikaciju. `GEMINI_MODEL` je opciona zamjena za podrazumijevani `gemini-3.5-flash-lite`. Ključ se ne sprema u lokalne postavke. Gemini dobija upit, trenutni datum i raspoložive nazive i ID-jeve filtera. Paperless token i sadržaj dokumenata koriste se samo u komunikaciji s Paperlessom.
 
-Ako Gemini nije podešen ili ne odgovori, aplikacija označi prijedlog lokalnog parsera. Lokalni parser pokriva jednostavne upite na srpskom i engleskom, a filtere možeš dopuniti ručno prije pretrage.
+U istom dijalogu izaberite **Gemini** ili **Lokalni parser**. Lokalni parser tumači jednostavne upite na srpskom i engleskom bez AI ključa i bez slanja upita Googleu. Ako poziv Geminiju ne uspije, dijalog prikazuje poruku i omogućava da izaberete lokalni parser i ponovite isti upit.
+
+Za tematski upit poput „Daj knjige o biljkama“ u Gemini načinu označite **Pošalji Geminiju nazive i ID-jeve do 250 dokumenata**. Model može predložiti dokumente po značenju naslova, čak i ako odgovarajući tag ne postoji. Uklonite neželjene prijedloge pa izaberite **Pretraži**. Paperless tada koristi ID-jeve označenih dokumenata uz ostale primijenjene filtere. Ova opcija šalje samo nazive i ID-jeve iz kataloga, bez fajlova ili OCR teksta. Obično polje **Ključne riječi** traži uneseni niz znakova u nazivu ili OCR sadržaju.

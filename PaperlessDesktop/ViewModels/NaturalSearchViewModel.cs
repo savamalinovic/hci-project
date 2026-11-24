@@ -11,11 +11,15 @@ namespace PaperlessDesktop.ViewModels;
 internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
 {
     private readonly PaperlessDocumentMetadata? metadata;
+    private readonly DocumentsViewModel documents;
     private readonly GeminiSearchInterpreter? gemini;
     private readonly CancellationTokenSource lifetime = new();
     private readonly AsyncCommand interpretCommand;
     private string query = string.Empty;
     private bool isBusy;
+    private bool useGemini;
+    private bool includeDocumentTitles;
+    private IReadOnlyList<ProposedDocument> proposedDocuments = [];
     private bool hasInterpretation;
     private string status = string.Empty;
     private string text = string.Empty;
@@ -27,8 +31,10 @@ internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
 
     public NaturalSearchViewModel(DocumentsViewModel documents, GeminiSearchInterpreter? gemini)
     {
+        this.documents = documents;
         metadata = documents.SearchMetadata;
         this.gemini = gemini;
+        useGemini = gemini is not null;
         Tags = documents.Tags;
         Correspondents = documents.Correspondents;
         DocumentTypes = documents.DocumentTypes;
@@ -46,6 +52,49 @@ internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
     public bool CanEditQuery => !IsBusy;
     public bool HasInterpretation => hasInterpretation;
     public string Status => status;
+    public IReadOnlyList<ProposedDocument> ProposedDocuments => proposedDocuments;
+    public bool HasProposedDocuments => proposedDocuments.Count > 0;
+
+    public bool IncludeDocumentTitles
+    {
+        get => includeDocumentTitles;
+        set
+        {
+            if (SetProperty(ref includeDocumentTitles, value))
+            {
+                ResetInterpretation();
+            }
+        }
+    }
+
+    public bool UseGemini
+    {
+        get => useGemini;
+        set
+        {
+            if (SetProperty(ref useGemini, value))
+            {
+                NotifyPropertyChanged(nameof(UseLocalParser));
+                ResetInterpretation();
+                if (value && gemini is null)
+                {
+                    SetStatus("NaturalGeminiMissingKey");
+                }
+            }
+        }
+    }
+
+    public bool UseLocalParser
+    {
+        get => !UseGemini;
+        set
+        {
+            if (value)
+            {
+                UseGemini = false;
+            }
+        }
+    }
 
     public string Query
     {
@@ -54,8 +103,7 @@ internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
         {
             if (SetProperty(ref query, value))
             {
-                SetProperty(ref hasInterpretation, false, nameof(HasInterpretation));
-                SetProperty(ref status, string.Empty, nameof(Status));
+                ResetInterpretation();
                 interpretCommand.Refresh();
             }
         }
@@ -117,8 +165,15 @@ internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
             return false;
         }
 
+        var ids = ProposedDocuments.Where(document => document.IsSelected).Select(document => document.Id).ToArray();
+        if (HasProposedDocuments && ids.Length == 0)
+        {
+            SetStatus("NaturalSelectDocument");
+            return false;
+        }
+
         criteria = new DocumentSearchCriteria(string.IsNullOrWhiteSpace(Text) ? null : Text.Trim(),
-            Tag?.Id, Correspondent?.Id, DocumentType?.Id, first, last);
+            Tag?.Id, Correspondent?.Id, DocumentType?.Id, first, last, ids.Length > 0 ? ids : null);
         if (criteria == new DocumentSearchCriteria())
         {
             SetStatus("NaturalEmptyCriteria");
@@ -130,6 +185,12 @@ internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
 
     private async Task InterpretAsync()
     {
+        if (UseGemini && gemini is null)
+        {
+            SetStatus("NaturalGeminiMissingKey");
+            return;
+        }
+
         var request = new NaturalSearchRequest(Query.Trim(), DateOnly.FromDateTime(DateTime.Today), metadata);
         var cancellationToken = lifetime.Token;
         SetBusy(true);
@@ -138,7 +199,13 @@ internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
 
         try
         {
-            var (result, source) = await GetInterpretationAsync(request, cancellationToken);
+            var titles = UseGemini && IncludeDocumentTitles
+                ? await documents.GetDocumentTitlesAsync(cancellationToken)
+                : null;
+            request = request with { DocumentTitles = titles };
+            var result = UseGemini
+                ? await gemini!.InterpretAsync(request, cancellationToken)
+                : LocalSearchInterpreter.Interpret(request);
             cancellationToken.ThrowIfCancellationRequested();
             var criteria = result.Criteria;
             Text = criteria.Text ?? string.Empty;
@@ -147,7 +214,10 @@ internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
             DocumentType = DocumentTypes.FirstOrDefault(option => option.Id == criteria.DocumentTypeId) ?? DocumentTypes[0];
             From = FormatDate(criteria.CreatedFrom);
             To = FormatDate(criteria.CreatedTo);
-            var sourceMessage = LocalizationService.Text(source);
+            proposedDocuments = criteria.DocumentIds?.Select(id => new ProposedDocument(id, titles![id])).ToArray() ?? [];
+            NotifyPropertyChanged(nameof(ProposedDocuments));
+            NotifyPropertyChanged(nameof(HasProposedDocuments));
+            var sourceMessage = LocalizationService.Text(UseGemini ? "NaturalGeminiResult" : "NaturalLocalResult");
             SetProperty(ref status, result.NeedsClarification
                 ? LocalizationService.Format("NaturalNeedsReview", sourceMessage)
                 : sourceMessage, nameof(Status));
@@ -155,6 +225,11 @@ internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+        }
+        catch (Exception error) when (UseGemini && (error is HttpRequestException or JsonException or InvalidDataException
+                                           or FormatException or ArgumentException or OperationCanceledException))
+        {
+            SetStatus("NaturalGeminiFailed");
         }
         finally
         {
@@ -165,24 +240,10 @@ internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
         }
     }
 
-    private async Task<(NaturalSearchInterpretation, string)> GetInterpretationAsync(
-        NaturalSearchRequest request, CancellationToken cancellationToken)
+    private void ResetInterpretation()
     {
-        if (gemini is null)
-        {
-            return (LocalSearchInterpreter.Interpret(request), "NaturalLocalNoKey");
-        }
-
-        try
-        {
-            return (await gemini.InterpretAsync(request, cancellationToken), "NaturalGeminiResult");
-        }
-        catch (Exception error) when (error is HttpRequestException or JsonException or InvalidDataException
-                                         or FormatException or ArgumentException or OperationCanceledException)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return (LocalSearchInterpreter.Interpret(request), "NaturalLocalAfterError");
-        }
+        SetProperty(ref hasInterpretation, false, nameof(HasInterpretation));
+        SetProperty(ref status, string.Empty, nameof(Status));
     }
 
     private void SetBusy(bool value)
@@ -221,4 +282,11 @@ internal sealed class NaturalSearchViewModel : ObservableViewModel, IDisposable
         lifetime.Cancel();
         lifetime.Dispose();
     }
+}
+
+internal sealed class ProposedDocument(int id, string title)
+{
+    public int Id { get; } = id;
+    public string Title { get; } = title;
+    public bool IsSelected { get; set; } = true;
 }

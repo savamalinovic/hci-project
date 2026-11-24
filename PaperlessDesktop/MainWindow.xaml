@@ -280,6 +280,8 @@
                 <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
                 <TextBlock Text="{Binding DateCriteriaLabel}" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap"
                            Visibility="{Binding HasDateCriteria, Converter={StaticResource BooleanToVisibility}}" />
+                <TextBlock Text="{Binding DocumentSelectionLabel}" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap"
+                           Visibility="{Binding HasDocumentSelection, Converter={StaticResource BooleanToVisibility}}" />
             </StackPanel>
             <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
                 <Button Content="{DynamicResource PreviousButton}" MinHeight="32" Padding="12,3" Command="{Binding PreviousPageCommand}" />

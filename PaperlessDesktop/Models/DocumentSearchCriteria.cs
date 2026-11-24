@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace PaperlessDesktop.Models;
 
@@ -8,4 +9,5 @@ public sealed record DocumentSearchCriteria(
     int? CorrespondentId = null,
     int? DocumentTypeId = null,
     DateOnly? CreatedFrom = null,
-    DateOnly? CreatedTo = null);
+    DateOnly? CreatedTo = null,
+    IReadOnlyList<int>? DocumentIds = null);

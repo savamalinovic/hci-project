@@ -18,6 +18,9 @@ namespace PaperlessDesktop.Services;
 public sealed class PaperlessClient(HttpClient httpClient)
 {
     private const int MaximumPreviewBytes = 32 * 1024 * 1024;
+    private const int MaximumDocumentIds = 50;
+    private const int MaximumDocumentTitles = 250;
+    private const int MaximumDocumentTitlePages = 10;
 
     public Task<PaperlessDocumentPage> GetDocumentsAsync(
         Uri server,
@@ -66,6 +69,17 @@ public sealed class PaperlessClient(HttpClient httpClient)
             query.Add("created__date__lte=" + to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
         }
 
+        if (criteria.DocumentIds is { Count: > 0 } documentIds)
+        {
+            var distinctIds = documentIds.Distinct().Take(MaximumDocumentIds + 1).ToArray();
+            if (distinctIds.Length > MaximumDocumentIds || distinctIds.Any(id => id <= 0))
+            {
+                throw new ArgumentException("Provide at most 50 distinct positive document IDs.", nameof(criteria));
+            }
+
+            query.Add("id__in=" + string.Join(',', distinctIds.Select(id => id.ToString(CultureInfo.InvariantCulture))));
+        }
+
         var page = await GetPageAsync<PaperlessDocument>(
             server, token, "documents", string.Join('&', query), cancellationToken).ConfigureAwait(false);
 
@@ -76,6 +90,39 @@ public sealed class PaperlessClient(HttpClient httpClient)
             HasNextPage = !string.IsNullOrWhiteSpace(page.Next),
             HasPreviousPage = !string.IsNullOrWhiteSpace(page.Previous),
         };
+    }
+
+    internal async Task<IReadOnlyDictionary<int, string>> GetDocumentTitlesAsync(
+        Uri server,
+        string token,
+        CancellationToken cancellationToken = default)
+    {
+        var titles = new Dictionary<int, string>();
+        for (int pageNumber = 1; pageNumber <= MaximumDocumentTitlePages; pageNumber++)
+        {
+            var query = GetPageQuery(pageNumber) + "&page_size=50&fields=id,title&ordering=-id&truncate_content=true";
+            var page = await GetPageAsync<DocumentTitleResponse>(server, token, "documents", query, cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var document in page.Results)
+            {
+                if (document.Id > 0 && !string.IsNullOrWhiteSpace(document.Title))
+                {
+                    titles.TryAdd(document.Id, document.Title);
+                    if (titles.Count == MaximumDocumentTitles)
+                    {
+                        return titles;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(page.Next))
+            {
+                break;
+            }
+        }
+
+        return titles;
     }
 
     public async Task<PaperlessDocumentMetadata> GetDocumentMetadataAsync(
@@ -500,6 +547,15 @@ public sealed class PaperlessClient(HttpClient httpClient)
 
         [JsonPropertyName("name")]
         public required string Name { get; init; }
+    }
+
+    private sealed class DocumentTitleResponse
+    {
+        [JsonPropertyName("id")]
+        public required int Id { get; init; }
+
+        [JsonPropertyName("title")]
+        public required string Title { get; init; }
     }
 
     private sealed class UploadTaskResponse
