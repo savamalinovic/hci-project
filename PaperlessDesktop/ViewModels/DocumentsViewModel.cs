@@ -52,7 +52,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
     }
 
     public DocumentPreviewViewModel Preview { get; }
-    internal Guid? PendingUploadTaskId { get; private set; }
+    internal PendingUpload? PendingUpload { get; private set; }
     internal PaperlessDocumentMetadata? SearchMetadata => metadata;
 
     internal Task<IReadOnlyDictionary<int, string>> GetDocumentTitlesAsync(CancellationToken cancellationToken) =>
@@ -176,7 +176,7 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
 
         if (server != parsedServer || token != trimmedToken)
         {
-            PendingUploadTaskId = null;
+            PendingUpload = null;
         }
 
         server = parsedServer;
@@ -189,19 +189,15 @@ internal sealed class DocumentsViewModel : ObservableViewModel, IDisposable
         return InvalidConnectionField.None;
     }
 
-    internal async Task FinishUploadAsync(Guid? pendingTaskId, bool isCompleted, int? documentId)
+    internal async Task FinishUploadAsync(PendingUpload? pendingUpload, bool isCompleted)
     {
-        PendingUploadTaskId = pendingTaskId;
+        PendingUpload = pendingUpload;
         if (isCompleted)
         {
             await LoadPageAsync(1, activeCriteria);
             SetStatus(new("DocumentsUploadSuccess", statusMessage));
-            if (documentId is int id)
-            {
-                SelectedDocument = Documents.FirstOrDefault(item => item.Document.Id == id);
-            }
         }
-        else if (pendingTaskId is not null)
+        else if (pendingUpload is not null)
         {
             SetStatus(new("DocumentsUploadPending"));
         }

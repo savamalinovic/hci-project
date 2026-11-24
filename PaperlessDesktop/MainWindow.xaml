@@ -99,7 +99,18 @@
         <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition>
+                    <ColumnDefinition.Style>
+                        <Style TargetType="ColumnDefinition">
+                            <Setter Property="Width" Value="0" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Preview.HasSelection}" Value="True">
+                                    <Setter Property="Width" Value="1.25*" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ColumnDefinition.Style>
+                </ColumnDefinition>
             </Grid.ColumnDefinitions>
             <Grid>
                 <Grid.RowDefinitions>
@@ -207,7 +218,7 @@
                 </TabControl>
             </Grid>
 
-            <Border Grid.Column="1" Width="360" Margin="16,0,0,0" Padding="12" Background="{DynamicResource SurfaceBrush}"
+            <Border Grid.Column="1" Margin="14,0,0,0" Padding="10" Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6" DataContext="{Binding Preview}"
                     Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibility}}">
                 <Grid>
@@ -224,42 +235,59 @@
                                 AutomationProperties.Name="{DynamicResource ClosePreviewName}" />
                         <TextBlock Text="{DynamicResource PreviewHeading}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </DockPanel>
-                    <StackPanel Grid.Row="1" Margin="0,10,0,9">
-                        <TextBlock Text="{Binding Item.Document.Title}" FontSize="16" FontWeight="SemiBold"
-                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding Item.Document.Title}" />
-                        <TextBlock Margin="0,4,0,0" Text="{Binding Item.CreatedDisplay}" />
-                        <TextBlock Text="{Binding TypeLabel}" TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding Item.TypeName}" />
-                        <TextBlock Text="{Binding CorrespondentLabel}" TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding Item.CorrespondentName}" />
-                        <TextBlock Text="{Binding TagsLabel}" TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding Item.TagNames}" />
-                    </StackPanel>
-                    <Border Grid.Row="2" Background="{DynamicResource SurfaceAltBrush}" CornerRadius="3" Padding="8">
-                        <ScrollViewer x:Name="PreviewScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <Image Source="{Binding Image, NotifyOnTargetUpdated=True}" TargetUpdated="PreviewImage_TargetUpdated"
-                                   Stretch="Uniform" VerticalAlignment="Top"
+                    <TextBlock Grid.Row="1" Margin="0,7,0,7" Text="{Binding Item.Document.Title}"
+                               FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Item.Document.Title}" />
+                    <Border Grid.Row="2" Background="{DynamicResource SurfaceAltBrush}" CornerRadius="3" Padding="5">
+                        <ScrollViewer x:Name="PreviewScroll" VerticalScrollBarVisibility="Visible"
+                                      HorizontalScrollBarVisibility="Auto" ScrollChanged="PreviewScroll_ScrollChanged">
+                            <Image x:Name="PreviewImage" Source="{Binding Image, NotifyOnTargetUpdated=True}"
+                                   TargetUpdated="PreviewImage_TargetUpdated" Stretch="Uniform"
+                                   HorizontalAlignment="Center" VerticalAlignment="Top"
                                    AutomationProperties.Name="{DynamicResource PreviewPageName}" />
                         </ScrollViewer>
                     </Border>
                     <StackPanel Grid.Row="3" Margin="0,6,0,0">
                         <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
                                    Visibility="{Binding HasNotice, Converter={StaticResource BooleanToVisibility}}" />
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                                    Visibility="{Binding HasMultiplePages, Converter={StaticResource BooleanToVisibility}}">
-                            <Button Content="‹" Command="{Binding PreviousPageCommand}" MinWidth="34" MinHeight="28"
-                                    AutomationProperties.Name="{DynamicResource PreviewPreviousName}" />
-                            <TextBlock Text="{Binding PageLabel}" Margin="10,0" VerticalAlignment="Center" />
-                            <Button Content="›" Command="{Binding NextPageCommand}" MinWidth="34" MinHeight="28"
-                                    AutomationProperties.Name="{DynamicResource PreviewNextName}" />
-                        </StackPanel>
+                        <WrapPanel HorizontalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,10,0"
+                                        Visibility="{Binding HasImage, Converter={StaticResource BooleanToVisibility}}">
+                                <Slider x:Name="PreviewZoom" Minimum="0.5" Maximum="2" Value="1"
+                                        TickFrequency="0.25" IsSnapToTickEnabled="True" Width="88"
+                                        VerticalAlignment="Center" ValueChanged="PreviewZoom_ValueChanged"
+                                        AutomationProperties.Name="{DynamicResource PreviewZoomName}" />
+                                <TextBlock Text="{Binding Value, ElementName=PreviewZoom, StringFormat={}{0:P0}}"
+                                           MinWidth="43" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                <Button Content="{DynamicResource PreviewFitWidth}" Click="PreviewFitWidth_Click"
+                                        MinHeight="28" Padding="6,2" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal"
+                                        Visibility="{Binding HasMultiplePages, Converter={StaticResource BooleanToVisibility}}">
+                                <Button Content="‹" Command="{Binding PreviousPageCommand}" MinWidth="34" MinHeight="28"
+                                        AutomationProperties.Name="{DynamicResource PreviewPreviousName}" />
+                                <TextBlock Text="{Binding PageLabel}" Margin="10,0" VerticalAlignment="Center" />
+                                <Button Content="›" Command="{Binding NextPageCommand}" MinWidth="34" MinHeight="28"
+                                        AutomationProperties.Name="{DynamicResource PreviewNextName}" />
+                            </StackPanel>
+                        </WrapPanel>
                     </StackPanel>
-                    <Expander Grid.Row="4" Margin="0,8,0,0" Header="{DynamicResource DocumentText}"
-                              Visibility="{Binding HasExtractedText, Converter={StaticResource BooleanToVisibility}}">
-                        <TextBox Text="{Binding ExtractedText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
-                                 MaxHeight="86" Padding="4" VerticalScrollBarVisibility="Auto"
-                                 AutomationProperties.Name="{DynamicResource DocumentText}" />
-                    </Expander>
+                    <StackPanel Grid.Row="4" Margin="0,5,0,0">
+                        <Expander Header="{DynamicResource PreviewDetails}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Item.CreatedDisplay}" />
+                                <TextBlock Text="{Binding TypeLabel}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding CorrespondentLabel}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding TagsLabel}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Expander>
+                        <Expander Header="{DynamicResource DocumentText}"
+                                  Visibility="{Binding HasExtractedText, Converter={StaticResource BooleanToVisibility}}">
+                            <TextBox Text="{Binding ExtractedText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                                     MaxHeight="86" Padding="4" VerticalScrollBarVisibility="Auto"
+                                     AutomationProperties.Name="{DynamicResource DocumentText}" />
+                        </Expander>
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>

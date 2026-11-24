@@ -36,6 +36,7 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
     public DocumentListItem? Item => item;
     public bool HasSelection => item is not null;
     public BitmapSource? Image => image;
+    public bool HasImage => image is not null;
     public string ExtractedText => extractedText;
     public bool HasExtractedText => extractedText.Length > 0;
     public string Notice => noticeKey is { } key ? LocalizationService.Text(key) : string.Empty;
@@ -55,7 +56,7 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
         SetProperty(ref item, selected, nameof(Item));
         NotifyPropertyChanged(nameof(HasSelection));
         UpdateMetadataLabels();
-        SetProperty(ref image, null, nameof(Image));
+        SetImage(null);
         SetExtractedText(string.Empty);
         SetNotice(null);
         pageIndex = 0;
@@ -107,7 +108,7 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
 
             var firstImage = await renderer.RenderPageAsync(0, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            SetProperty(ref image, firstImage, nameof(Image));
+            SetImage(firstImage);
             pageCount = renderer.PageCount;
             UpdatePageNavigation();
             SetNotice(null);
@@ -144,7 +145,7 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
         {
             var renderedImage = await renderer.RenderPageAsync(targetIndex, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            SetProperty(ref image, renderedImage, nameof(Image));
+            SetImage(renderedImage);
             pageIndex = targetIndex;
             SetNotice(null);
         }
@@ -176,6 +177,14 @@ internal sealed class DocumentPreviewViewModel : ObservableViewModel, IDisposabl
         HttpRequestException => "PreviewDownloadFailed",
         _ => "PreviewRenderFailed",
     };
+
+    private void SetImage(BitmapSource? value)
+    {
+        if (SetProperty(ref image, value, nameof(Image)))
+        {
+            NotifyPropertyChanged(nameof(HasImage));
+        }
+    }
 
     private void SetExtractedText(string text)
     {

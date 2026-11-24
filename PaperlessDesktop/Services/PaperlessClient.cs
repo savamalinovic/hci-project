@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -90,6 +91,15 @@ public sealed class PaperlessClient(HttpClient httpClient)
             HasNextPage = !string.IsNullOrWhiteSpace(page.Next),
             HasPreviousPage = !string.IsNullOrWhiteSpace(page.Previous),
         };
+    }
+
+    internal async Task<bool> IsUploadedDocumentAvailableAsync(
+        Uri server, string token, string checksum, int previousLatestId, CancellationToken cancellationToken)
+    {
+        var page = await GetPageAsync<DocumentTitleResponse>(server, token, "documents",
+            "page_size=1&ordering=-id&fields=id,title&checksum__iexact=" + checksum, cancellationToken)
+            .ConfigureAwait(false);
+        return page.Results.Any(document => document.Id > previousLatestId);
     }
 
     internal async Task<IReadOnlyDictionary<int, string>> GetDocumentTitlesAsync(
@@ -193,7 +203,7 @@ public sealed class PaperlessClient(HttpClient httpClient)
         return new PaperlessDocumentPreview(content.ToArray(), response.Content.Headers.ContentType?.MediaType);
     }
 
-    public async Task<Guid> UploadDocumentAsync(
+    internal async Task<(Guid TaskId, string Checksum, int? PreviousLatestId)> UploadDocumentAsync(
         Uri server,
         string token,
         DocumentUploadRequest upload,
@@ -211,6 +221,28 @@ public sealed class PaperlessClient(HttpClient httpClient)
         if (file.Length == 0)
         {
             throw new InvalidDataException("Choose a document file that is not empty.");
+        }
+
+        // Paperless indexes the MD5 checksum of the original file.
+        var checksum = Convert.ToHexString(await MD5.HashDataAsync(file, cancellationToken).ConfigureAwait(false));
+        file.Position = 0;
+
+        int? previousLatestId = null;
+        using (var snapshot = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            snapshot.CancelAfter(TimeSpan.FromSeconds(5));
+            try
+            {
+                var page = await GetPageAsync<DocumentTitleResponse>(
+                    server, token, "documents", "page_size=1&ordering=-id&fields=id,title", snapshot.Token)
+                    .ConfigureAwait(false);
+                previousLatestId = page.Results.FirstOrDefault()?.Id ?? 0;
+            }
+            catch (Exception error) when (error is HttpRequestException or JsonException ||
+                error is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                // The upload still works when the document list is temporarily unavailable.
+            }
         }
 
         var form = new MultipartFormDataContent();
@@ -238,7 +270,7 @@ public sealed class PaperlessClient(HttpClient httpClient)
 
         string response = await SendJsonAsync<string>(request, cancellationToken).ConfigureAwait(false);
         return Guid.TryParse(response, out var taskId) && taskId != Guid.Empty
-            ? taskId
+            ? (taskId, checksum, previousLatestId)
             : throw new JsonException("Paperless did not return a valid upload task ID.");
     }
 

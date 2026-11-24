@@ -26,6 +26,9 @@
     <sys:String x:Key="ClosePreviewButton">Close</sys:String>
     <sys:String x:Key="ClosePreviewName">Close preview</sys:String>
     <sys:String x:Key="PreviewHeading">Document preview</sys:String>
+    <sys:String x:Key="PreviewZoomName">Preview zoom</sys:String>
+    <sys:String x:Key="PreviewFitWidth">Fit width</sys:String>
+    <sys:String x:Key="PreviewDetails">Details</sys:String>
     <sys:String x:Key="PreviewPageName">Document page</sys:String>
     <sys:String x:Key="PreviewPreviousName">Previous preview page</sys:String>
     <sys:String x:Key="PreviewNextName">Next preview page</sys:String>
@@ -91,8 +94,8 @@
     <sys:String x:Key="DocumentsConnectPrompt">Enter the Paperless server address and API token to load documents.</sys:String>
     <sys:String x:Key="InvalidServerAddress">Enter a valid server address starting with http:// or https://.</sys:String>
     <sys:String x:Key="MissingApiToken">Enter the API token without spaces.</sys:String>
-    <sys:String x:Key="DocumentsUploadSuccess">The document was processed successfully. {0}</sys:String>
-    <sys:String x:Key="DocumentsUploadPending">The document was uploaded. You can check its status in the Add document window.</sys:String>
+    <sys:String x:Key="DocumentsUploadSuccess">The document was added. {0}</sys:String>
+    <sys:String x:Key="DocumentsUploadPending">The file was submitted for processing. You can check its status in the Add document window.</sys:String>
     <sys:String x:Key="DocumentsLoading">Loading page {0}…</sys:String>
     <sys:String x:Key="DocumentsEmpty">There are no documents to display.</sys:String>
     <sys:String x:Key="SearchEmpty">No documents match your search.</sys:String>
@@ -121,12 +124,11 @@
     <sys:String x:Key="UploadInvalidDate">Enter a date in YYYY-MM-DD or day.month.year format.</sys:String>
     <sys:String x:Key="UploadSending">Uploading document…</sys:String>
     <sys:String x:Key="UploadAccepted">The document was received. Waiting for the server to process it…</sys:String>
-    <sys:String x:Key="UploadProcessed">The document was processed successfully.</sys:String>
+    <sys:String x:Key="UploadProcessed">The document was added.</sys:String>
     <sys:String x:Key="UploadDuplicate">This document already exists in Paperless.</sys:String>
     <sys:String x:Key="UploadProcessingFailed">Paperless could not process the document. Check the file and try again.</sys:String>
     <sys:String x:Key="UploadProcessing">Paperless is processing the document…</sys:String>
-    <sys:String x:Key="UploadStillProcessing">The document is still processing. You can check its status again.</sys:String>
-    <sys:String x:Key="UploadStatusUnavailable">The processing status is currently unavailable. Check again.</sys:String>
+    <sys:String x:Key="UploadStillProcessing">The file was submitted for processing. Its availability has not been confirmed yet. You can check again.</sys:String>
     <sys:String x:Key="UploadEmptyFile">The selected file is empty.</sys:String>
     <sys:String x:Key="UploadFileUnavailable">The selected file is unavailable. Choose the file again.</sys:String>
     <sys:String x:Key="UploadAccessDenied">You do not have permission to upload documents.</sys:String>

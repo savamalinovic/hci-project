@@ -8,7 +8,7 @@ namespace PaperlessDesktop.Services;
 
 internal sealed class DocumentPreviewRenderer : IDisposable
 {
-    private const int MaxPreviewDimension = 1600;
+    private const int MaxPreviewDimension = 2400;
     private readonly PdfDocument? pdf;
     private readonly IRandomAccessStream? pdfInput;
     private readonly BitmapSource? image;

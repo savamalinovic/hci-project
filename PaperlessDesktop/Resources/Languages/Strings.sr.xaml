@@ -26,6 +26,9 @@
     <sys:String x:Key="ClosePreviewButton">Zatvori</sys:String>
     <sys:String x:Key="ClosePreviewName">Zatvori pregled</sys:String>
     <sys:String x:Key="PreviewHeading">Pregled dokumenta</sys:String>
+    <sys:String x:Key="PreviewZoomName">Zum pregleda</sys:String>
+    <sys:String x:Key="PreviewFitWidth">Prilagodi širini</sys:String>
+    <sys:String x:Key="PreviewDetails">Detalji</sys:String>
     <sys:String x:Key="PreviewPageName">Stranica dokumenta</sys:String>
     <sys:String x:Key="PreviewPreviousName">Prethodna stranica pregleda</sys:String>
     <sys:String x:Key="PreviewNextName">Sljedeća stranica pregleda</sys:String>
@@ -91,7 +94,7 @@
     <sys:String x:Key="DocumentsConnectPrompt">Unesite adresu Paperless servera i API token za prikaz dokumenata.</sys:String>
     <sys:String x:Key="InvalidServerAddress">Unesite ispravnu adresu servera koja počinje sa http:// ili https://.</sys:String>
     <sys:String x:Key="MissingApiToken">Unesite API token bez razmaka.</sys:String>
-    <sys:String x:Key="DocumentsUploadSuccess">Dokument je uspješno obrađen. {0}</sys:String>
+    <sys:String x:Key="DocumentsUploadSuccess">Dokument je dodat. {0}</sys:String>
     <sys:String x:Key="DocumentsUploadPending">Dokument je poslan. U prozoru Dodaj dokument možete nastaviti provjeru statusa.</sys:String>
     <sys:String x:Key="DocumentsLoading">Učitavanje stranice {0}…</sys:String>
     <sys:String x:Key="DocumentsEmpty">Nema dokumenata za prikaz.</sys:String>
@@ -121,12 +124,11 @@
     <sys:String x:Key="UploadInvalidDate">Unesite datum u formatu GGGG-MM-DD ili dan.mjesec.godina.</sys:String>
     <sys:String x:Key="UploadSending">Slanje dokumenta…</sys:String>
     <sys:String x:Key="UploadAccepted">Dokument je primljen. Čeka se obrada na serveru…</sys:String>
-    <sys:String x:Key="UploadProcessed">Dokument je uspješno obrađen.</sys:String>
+    <sys:String x:Key="UploadProcessed">Dokument je dodat.</sys:String>
     <sys:String x:Key="UploadDuplicate">Ovaj dokument već postoji u Paperlessu.</sys:String>
     <sys:String x:Key="UploadProcessingFailed">Paperless nije uspio obraditi dokument. Provjerite fajl i pokušajte ponovo.</sys:String>
     <sys:String x:Key="UploadProcessing">Paperless obrađuje dokument…</sys:String>
-    <sys:String x:Key="UploadStillProcessing">Obrada još traje. Možete ponovo provjeriti status.</sys:String>
-    <sys:String x:Key="UploadStatusUnavailable">Status obrade trenutno nije dostupan. Ponovo provjerite status.</sys:String>
+    <sys:String x:Key="UploadStillProcessing">Fajl je poslan na obradu. Dostupnost dokumenta još nije potvrđena. Možete ponovo provjeriti.</sys:String>
     <sys:String x:Key="UploadEmptyFile">Izabrani fajl je prazan.</sys:String>
     <sys:String x:Key="UploadFileUnavailable">Izabrani fajl nije dostupan. Izaberite fajl ponovo.</sys:String>
     <sys:String x:Key="UploadAccessDenied">Nemate dozvolu za slanje dokumenata.</sys:String>

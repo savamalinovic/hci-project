@@ -1,8 +1,8 @@
 # Paperless Desktop
 
-Windows desktop klijent za Paperless-ngx, napravljen u C# i WPF-u.
+Windows klijent za Paperless-ngx, napravljen u C# i WPF-u. [HCI analiza](HCI_Analiza.pdf) sadrži rezultate poređenja web i desktop interfejsa.
 
-## Pokretanje iz izvornog koda
+## Pokretanje
 
 Potreban je Windows i .NET 8 SDK. Iz osnovnog foldera projekta pokrenite:
 
@@ -10,26 +10,19 @@ Potreban je Windows i .NET 8 SDK. Iz osnovnog foldera projekta pokrenite:
 dotnet run --project PaperlessDesktop
 ```
 
-U aplikaciji unesite osnovnu adresu Paperless servera i važeći API token, pa izaberite **Učitaj dokumente**. Za fakultetsku instancu koristite pristupne podatke iz uputa za projekat. Token se unosi u maskirano polje i ne čuva se poslije zatvaranja aplikacije.
+Unesite adresu Paperless servera i API token, pa izaberite **Učitaj dokumente**. Adresu možete zadati i varijablom `PAPERLESS_SERVER_URL`. Aplikacija ne sačuvava token nakon zatvaranja.
 
-Adresu servera možete unaprijed zadati varijablom okruženja `PAPERLESS_SERVER_URL`.
+## Rad s dokumentima
 
-Dokumente možete pregledati u tabeli ili na karticama. Dugmad **Prethodna** i **Sljedeća** učitavaju odgovarajuću stranicu sa servera. Promjena prikaza zadržava trenutnu stranicu.
-
-Unesite ključne riječi ili odaberite tag, korespondenta i tip dokumenta, pa izaberite **Pretraži**. Izaberite dokument u rezultatima za prikaz metapodataka i pregleda. PDF pregled se lista strelicama, a tekst dokumenta je dostupan kada ga je Paperless prepoznao.
-
-U prozoru **Dodaj dokument** izaberite fajl, po želji unesite metapodatke i pokrenite slanje. Prikaz razlikuje slanje od obrade na serveru. Ako zatvorite prozor nakon prijema, možete ga ponovo otvoriti da nastavite provjeru statusa u istoj sesiji.
-
-Prozor **Upravljaj tagovima** omogućava kreiranje, uređivanje i brisanje tagova. Nakon promjene lista dokumenata i filteri učitavaju ažurirane nazive.
-
-U prozoru **Podešavanja** odaberite svijetlu ili tamnu temu, akcentnu boju i srpski ili engleski jezik. Akcent se bira RGB klizačima ili unosom vrijednosti u formatu `#RRGGBB`. Promjene se primjenjuju nakon čuvanja. Aplikacija ih ponovo učitava iz `%LOCALAPPDATA%\PaperlessDesktop\settings.json` pri pokretanju.
+- Dokumente možete prikazati u tabeli ili na karticama i filtrirati po ključnim riječima, tagu, korespondentu i tipu.
+- Izbor dokumenta otvara pregled s listanjem PDF stranica, zumom od 50% do 200% i prepoznatim tekstom, ako je dostupan.
+- U prozoru **Dodaj dokument** izaberite fajl, po želji unesite metapodatke i pošaljite ga. Poruka **Dokument je dodat** pojavljuje se kad dokument postane dostupan. Dugme **Provjeri status** ponavlja provjeru bez ponovnog slanja.
+- U prozoru **Upravljaj tagovima** možete dodavati, uređivati i brisati tagove. U **Podešavanjima** možete promijeniti temu, akcentnu boju i jezik.
 
 ## Pretraga prirodnim jezikom
 
-Nakon učitavanja dokumenata otvorite **Pretraga prirodnim jezikom**. Unesite, na primjer, „Nađi račune iz juna 2025.“ i izaberite **Protumači**. Pregledajte i po potrebi uredite predložene filtere, pa izaberite **Pretraži**. Datumske granice su uključive, a **Očisti** uklanja i datum i ostale filtere.
+Izaberite **Gemini** ili **Lokalni parser**, unesite upit poput „Nađi račune iz juna 2025.“ i kliknite **Protumači**. Po potrebi uredite predložene filtere pa kliknite **Pretraži**. Datumske granice su uključive.
 
-Za tumačenje putem Geminija postavite `GEMINI_API_KEY` u okruženju iz kojeg pokrećete aplikaciju. `GEMINI_MODEL` je opciona zamjena za podrazumijevani `gemini-3.5-flash-lite`. Ključ se ne sprema u lokalne postavke. Gemini dobija upit, trenutni datum i raspoložive nazive i ID-jeve filtera. Paperless token i sadržaj dokumenata koriste se samo u komunikaciji s Paperlessom.
+Za Gemini postavite `GEMINI_API_KEY` prije pokretanja aplikacije. Aplikacija ne sačuvava ključ u lokalnim postavkama. Model možete promijeniti varijablom `GEMINI_MODEL`. Lokalni parser radi bez ključa i podržava jednostavne upite na srpskom i engleskom.
 
-U istom dijalogu izaberite **Gemini** ili **Lokalni parser**. Lokalni parser tumači jednostavne upite na srpskom i engleskom bez AI ključa i bez slanja upita Googleu. Ako poziv Geminiju ne uspije, dijalog prikazuje poruku i omogućava da izaberete lokalni parser i ponovite isti upit.
-
-Za tematski upit poput „Daj knjige o biljkama“ u Gemini načinu označite **Pošalji Geminiju nazive i ID-jeve do 250 dokumenata**. Model može predložiti dokumente po značenju naslova, čak i ako odgovarajući tag ne postoji. Uklonite neželjene prijedloge pa izaberite **Pretraži**. Paperless tada koristi ID-jeve označenih dokumenata uz ostale primijenjene filtere. Ova opcija šalje samo nazive i ID-jeve iz kataloga, bez fajlova ili OCR teksta. Obično polje **Ključne riječi** traži uneseni niz znakova u nazivu ili OCR sadržaju.
+Za tematske upite, poput „Daj knjige o biljkama“, možete odobriti slanje naziva i ID-jeva do 250 dokumenata da Gemini predloži konkretne rezultate. Fajlovi, OCR tekst i Paperless token ostaju u komunikaciji s Paperless serverom.

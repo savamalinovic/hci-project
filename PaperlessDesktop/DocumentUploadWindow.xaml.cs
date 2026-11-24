@@ -14,13 +14,12 @@ public partial class DocumentUploadWindow : Window
     {
         InitializeComponent();
         viewModel = new DocumentUploadViewModel(client, server, token, documents.Tags, documents.Correspondents,
-            documents.DocumentTypes, documents.PendingUploadTaskId);
+            documents.DocumentTypes, documents.PendingUpload);
         DataContext = viewModel;
     }
 
     internal bool IsCompleted => viewModel.IsCompleted;
-    internal int? ImportedDocumentId => viewModel.ImportedDocumentId;
-    internal Guid? PendingTaskId => viewModel.PendingTaskId;
+    internal PendingUpload? Pending => viewModel.Pending;
 
     private void PickFile_Click(object sender, RoutedEventArgs e)
     {

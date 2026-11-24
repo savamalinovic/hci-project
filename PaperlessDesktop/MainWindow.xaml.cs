@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Controls;
 using PaperlessDesktop.Services;
 using PaperlessDesktop.ViewModels;
 
@@ -46,7 +47,35 @@ public partial class MainWindow : Window
         DocumentViews.Focus();
     }
 
-    private void PreviewImage_TargetUpdated(object sender, DataTransferEventArgs e) => PreviewScroll.ScrollToTop();
+    private void PreviewImage_TargetUpdated(object sender, DataTransferEventArgs e)
+    {
+        PreviewScroll.ScrollToHome();
+        UpdatePreviewWidth();
+    }
+
+    private void PreviewScroll_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.ViewportWidthChange != 0)
+        {
+            UpdatePreviewWidth();
+        }
+    }
+
+    private void PreviewZoom_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) => UpdatePreviewWidth();
+
+    private void PreviewFitWidth_Click(object sender, RoutedEventArgs e)
+    {
+        PreviewZoom.Value = 1;
+        PreviewScroll.ScrollToLeftEnd();
+    }
+
+    private void UpdatePreviewWidth()
+    {
+        if (PreviewScroll?.ViewportWidth is > 0 and < double.PositiveInfinity && PreviewZoom is not null)
+        {
+            PreviewImage.Width = PreviewScroll.ViewportWidth * PreviewZoom.Value;
+        }
+    }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
@@ -77,7 +106,7 @@ public partial class MainWindow : Window
             var upload = new DocumentUploadWindow(new PaperlessClient(uploadHttpClient), connection.Server,
                 connection.Token, viewModel) { Owner = this };
             upload.ShowDialog();
-            await viewModel.FinishUploadAsync(upload.PendingTaskId, upload.IsCompleted, upload.ImportedDocumentId);
+            await viewModel.FinishUploadAsync(upload.Pending, upload.IsCompleted);
         }
     }
 

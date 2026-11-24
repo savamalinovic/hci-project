@@ -22,17 +22,17 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
     private string statusKey = "UploadChooseFile";
     private bool isBusy;
     private bool isSending;
-    private Guid? taskId;
+    private PendingUpload? pendingUpload;
 
     public DocumentUploadViewModel(
         PaperlessClient client, Uri server, string token, IReadOnlyList<FilterOption> tags,
-        IReadOnlyList<FilterOption> correspondents, IReadOnlyList<FilterOption> documentTypes, Guid? pendingTaskId)
+        IReadOnlyList<FilterOption> correspondents, IReadOnlyList<FilterOption> documentTypes, PendingUpload? previousUpload)
     {
         this.client = client;
         this.server = server;
         this.token = token;
-        taskId = pendingTaskId;
-        if (taskId is not null)
+        pendingUpload = previousUpload;
+        if (pendingUpload is not null)
         {
             statusKey = "UploadResumeStatus";
         }
@@ -55,15 +55,14 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
     public string CreatedText { get; set; } = string.Empty;
 
     public string FileName => filePath is null
-        ? LocalizationService.Text(taskId is null ? "UploadNoFile" : "UploadPreviousFile")
+        ? LocalizationService.Text(pendingUpload is null ? "UploadNoFile" : "UploadPreviousFile")
         : Path.GetFileName(filePath);
     public bool IsBusy => isBusy;
-    public bool CanEdit => !isBusy && taskId is null && !IsCompleted;
+    public bool CanEdit => !isBusy && pendingUpload is null && !IsCompleted;
     public bool CanClose => !isSending;
-    public bool CanCheckStatus => !isBusy && taskId is not null && !IsCompleted;
+    public bool CanCheckStatus => !isBusy && pendingUpload is not null && !IsCompleted;
     public bool IsCompleted { get; private set; }
-    public Guid? PendingTaskId => IsCompleted ? null : taskId;
-    public int? ImportedDocumentId { get; private set; }
+    public PendingUpload? Pending => IsCompleted ? null : pendingUpload;
     public ICommand SubmitCommand => submitCommand;
     public ICommand CheckStatusCommand => checkStatusCommand;
 
@@ -120,7 +119,8 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
 
         try
         {
-            taskId = await client.UploadDocumentAsync(server, token, request, lifetime.Token);
+            var receipt = await client.UploadDocumentAsync(server, token, request, lifetime.Token);
+            pendingUpload = new PendingUpload(receipt.TaskId, receipt.Checksum, receipt.PreviousLatestId);
         }
         catch (Exception error) when (error is HttpRequestException or IOException or UnauthorizedAccessException
             or JsonException or InvalidDataException or OperationCanceledException or ArgumentException)
@@ -139,7 +139,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
         if (!lifetime.IsCancellationRequested)
         {
             UpdateState();
-            if (taskId is not null)
+            if (pendingUpload is not null)
             {
                 await CheckStatusAsync();
             }
@@ -148,7 +148,7 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
 
     private async Task CheckStatusAsync()
     {
-        if (taskId is not Guid id)
+        if (pendingUpload is not { } upload)
         {
             return;
         }
@@ -158,23 +158,36 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
         SetStatus("UploadAccepted");
 
         using var tracking = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-        tracking.CancelAfter(TimeSpan.FromMinutes(1));
+        tracking.CancelAfter(TimeSpan.FromSeconds(45));
         try
         {
             while (true)
             {
-                var task = await client.GetUploadTaskAsync(server, token, id, tracking.Token);
+                PaperlessUploadTask? task = null;
+                if (upload.CanReadTask)
+                {
+                    try
+                    {
+                        using var taskCheck = CancellationTokenSource.CreateLinkedTokenSource(tracking.Token);
+                        taskCheck.CancelAfter(TimeSpan.FromSeconds(4));
+                        task = await client.GetUploadTaskAsync(server, token, upload.TaskId, taskCheck.Token);
+                    }
+                    catch (HttpRequestException error) when (error.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
+                    {
+                        pendingUpload = upload = upload with { CanReadTask = false };
+                    }
+                    catch (Exception error) when (error is HttpRequestException or JsonException ||
+                        error is OperationCanceledException && !tracking.IsCancellationRequested)
+                    {
+                        // A temporary task API failure does not prevent checking the list.
+                    }
+                }
                 tracking.Token.ThrowIfCancellationRequested();
                 switch (task?.Status.ToUpperInvariant())
                 {
-                    case "SUCCESS":
-                        ImportedDocumentId = task.DocumentId;
-                        IsCompleted = true;
-                        SetStatus("UploadProcessed");
-                        return;
                     case "FAILURE":
                     case "REVOKED":
-                        taskId = null;
+                        pendingUpload = null;
                         SetStatus(task.Result?.Contains("duplicate", StringComparison.OrdinalIgnoreCase) == true
                             ? "UploadDuplicate"
                             : "UploadProcessingFailed");
@@ -182,6 +195,13 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
                     case "STARTED":
                         SetStatus("UploadProcessing");
                         break;
+                }
+
+                if (await IsDocumentAvailableAsync(upload, task, tracking.Token))
+                {
+                    IsCompleted = true;
+                    SetStatus("UploadProcessed");
+                    return;
                 }
 
                 await Task.Delay(TimeSpan.FromSeconds(2), tracking.Token);
@@ -195,10 +215,6 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
         {
             SetStatus("UploadStillProcessing");
         }
-        catch (Exception error) when (error is HttpRequestException or JsonException or OperationCanceledException)
-        {
-            SetStatus("UploadStatusUnavailable");
-        }
         finally
         {
             if (!lifetime.IsCancellationRequested)
@@ -206,6 +222,33 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
                 isBusy = false;
                 UpdateState();
             }
+        }
+    }
+
+    private async Task<bool> IsDocumentAvailableAsync(
+        PendingUpload upload, PaperlessUploadTask? task, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var listCheck = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            listCheck.CancelAfter(TimeSpan.FromSeconds(5));
+
+            if (task?.DocumentId is int documentId && documentId > 0 &&
+                string.Equals(task.Status, "SUCCESS", StringComparison.OrdinalIgnoreCase))
+            {
+                var page = await client.GetDocumentsAsync(server, token, 1,
+                    new DocumentSearchCriteria(DocumentIds: [documentId]), listCheck.Token);
+                return page.Results.Any(document => document.Id == documentId);
+            }
+
+            return upload.PreviousLatestId is int previousLatestId &&
+                await client.IsUploadedDocumentAvailableAsync(
+                    server, token, upload.Checksum, previousLatestId, listCheck.Token);
+        }
+        catch (Exception error) when (error is HttpRequestException or JsonException ||
+            error is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return false;
         }
     }
 
@@ -267,6 +310,8 @@ internal sealed class DocumentUploadViewModel : ObservableViewModel, IDisposable
         lifetime.Dispose();
     }
 }
+
+internal sealed record PendingUpload(Guid TaskId, string Checksum, int? PreviousLatestId, bool CanReadTask = true);
 
 internal sealed class UploadTagOption(int id, string name)
 {
